@@ -57,6 +57,7 @@ export class Scene {
     const obj = {
       id: this.nextId++,
       type: 'sprite',
+      name: 'Object',
       x: 0, y: 0,
       width: 64, height: 64,
       rotation: 0,
@@ -127,6 +128,7 @@ export class Scene {
       if (o.visible === undefined) o.visible = true;
       if (o.opacity === undefined) o.opacity = 1;
       if (o.rotation === undefined) o.rotation = 0;
+      if (!o.name) o.name = 'Object';
       if (!o.physics) o.physics = defaultPhysics();
     }
   }

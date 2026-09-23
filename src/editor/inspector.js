@@ -38,6 +38,7 @@ export class Inspector {
     form.className = 'inspector-form';
     this.container.appendChild(form);
     this.formEl = form;
+    this._textField(form, 'name', 'Name');
 
     this._numField(form, 'x',        'X');
     this._numField(form, 'y',        'Y');
@@ -96,6 +97,20 @@ export class Inspector {
       'physType', 'physShape', 'physDensity',
       'physFriction', 'physRestitution', 'physRadius',
     ];
+  }
+
+  _textField(parent, prop, label) {
+    const row = document.createElement('div');
+    row.className = 'inspector-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.dataset.prop = prop;
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    row.appendChild(lbl);
+    row.appendChild(input);
+    parent.appendChild(row);
+    this.fields[prop] = input;
   }
 
   _numField(parent, prop, label, opts = {}) {
@@ -192,6 +207,7 @@ export class Inspector {
       this.fields[prop].value = v;
     };
 
+    setVal('name', first.name || 'Object');
     setVal('id', first.id);
     setVal('x', first.x.toFixed(2));
     setVal('y', first.y.toFixed(2));
@@ -239,6 +255,9 @@ export class Inspector {
       if (!obj) continue;
 
       switch (prop) {
+        case 'name':
+          obj.name = String(value) || 'Object';
+          break;
         case 'x':
         case 'y':
         case 'width':

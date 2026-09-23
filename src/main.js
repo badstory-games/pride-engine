@@ -4,6 +4,15 @@ import { GameLoop } from './engine/loop.js';
 import { Camera } from './engine/camera.js';
 import { AssetManager } from './engine/asset-manager.js';
 import { drawGrid } from './engine/grid.js';
+import { InputState } from './engine/input-state.js';
+import { PhysicsBridge } from './engine/physics-bridge.js';
+import { drawPhysicsDebug } from './engine/physics/debug-draw.js';
+
+import { registerConditions } from './engine/events/conditions.js';
+import { registerActions }    from './engine/events/actions.js';
+import { EventRuntime }       from './engine/events/runtime.js';
+import { defaultEventSheet }  from './engine/events/demo.js';
+
 import { Scene } from './editor/scene.js';
 import { Editor } from './editor/editor.js';
 import { EditorController } from './editor/input.js';
@@ -12,12 +21,14 @@ import { ShortcutsModal } from './editor/shortcuts-modal.js';
 import { Inspector } from './editor/inspector.js';
 import { LayersPanel } from './editor/layers-panel.js';
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
-import { PhysicsBridge } from './engine/physics-bridge.js';
-import { drawPhysicsDebug } from './engine/physics/debug-draw.js';
 
 async function main() {
+  // --- Регистрация условий/действий (один раз) ---
+  registerConditions();
+  registerActions();
+
   const canvas = document.getElementById('pride-canvas');
-  const fpsEl = document.getElementById('fps');
+  const fpsEl  = document.getElementById('fps');
   const statusEl = document.getElementById('status');
 
   const renderer = new Renderer();
@@ -60,30 +71,47 @@ async function main() {
     assets.loadFromBitmap('player', bmp);
   }
 
-  // --- Сцена + Editor ---
-  const scene = new Scene();
-  const editor = new Editor(scene);
+  // --- Сцена / проект / редактор ---
+  const scene   = new Scene();
+  const project = { scene, sheet: null, vars: {} };
+  const editor  = new Editor(scene);
   const controller = new EditorController(canvas, camera, editor);
+  const bridge  = new PhysicsBridge(scene);
 
-  // ============================================================
-  // Physics — 3.2 Bridge
-  // ============================================================
-  const bridge = new PhysicsBridge(scene);
+  // --- Input ---
+  const input = new InputState();
 
-  // --- Inspector ---
+  window.addEventListener('keydown', (e) => {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.repeat) return;
+    if (e.code === 'Space') e.preventDefault();
+    input.press(e.code);
+  });
+
+  window.addEventListener('keyup', (e) => {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    input.release(e.code);
+  });
+
+  // --- Event runtime ---
+  const eventRuntime = new EventRuntime(project.sheet || defaultEventSheet(), (dt) => ({
+    world: bridge.world,
+    scene,
+    input,
+    vars:  project.vars,
+    dt,
+    time:  performance.now() / 1000,
+  }));
+
+  // --- Inspector / Layers ---
   const inspector = new Inspector(
-    document.getElementById('inspector-content'),
-    editor,
-    scene
-  );
+    document.getElementById('inspector-content'), editor, scene);
   inspector.setTextures(['player', '__white']);
 
-  // --- Layers panel ---
   const layersPanel = new LayersPanel(
-    document.getElementById('layers-panel'),
-    editor,
-    scene
-  );
+    document.getElementById('layers-panel'), editor, scene);
 
   // --- Shortcuts modal ---
   const shortcutsModal = new ShortcutsModal();
@@ -92,19 +120,17 @@ async function main() {
   controller.onToggleShortcuts = () => shortcutsModal.toggle();
   controller.isShortcutsOpen  = () => shortcutsModal.isOpen;
 
-  // --- Toolbar buttons ---
+  // --- Toolbar ---
   const toolButtons = document.querySelectorAll('.tool');
   function refreshToolButtons() {
-    toolButtons.forEach((b) => {
-      b.classList.toggle('active', b.dataset.tool === editor.tool);
-    });
+    toolButtons.forEach((b) => b.classList.toggle('active', b.dataset.tool === editor.tool));
   }
   toolButtons.forEach((b) => {
     b.addEventListener('click', () => controller.setTool(b.dataset.tool));
   });
   refreshToolButtons();
 
-  // --- Save indicator + debounced autosave ---
+  // --- Save indicator + autosave ---
   const saveIndicator = document.getElementById('save-indicator');
   let saveTimer = 0;
 
@@ -117,7 +143,7 @@ async function main() {
     setIndicator('dirty', '● unsaved');
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      if (saveProject(scene)) {
+      if (saveProject(project)) {
         setIndicator('saved', '✓ saved ' + new Date().toLocaleTimeString());
       } else {
         setIndicator('error', '✕ save error');
@@ -125,25 +151,39 @@ async function main() {
     }, 500);
   }
 
-  // --- Первая загрузка: восстановить или создать демо ---
+  // --- Первая загрузка ---
   if (hasProject()) {
-    if (loadProject(scene)) {
+    if (loadProject(project)) {
       setIndicator('saved', '✓ loaded');
-      console.log('[storage] project restored from localStorage');
+      console.log('[storage] project restored');
     }
   } else {
-    scene.add({ x: 200, y: 250, width: 64,  height: 64,  textureId: 'player' });
-    scene.add({ x: 320, y: 250, width: 64,  height: 64,  textureId: 'player', rotation: Math.PI / 6 });
-    scene.add({ x: 440, y: 250, width: 64,  height: 64,  textureId: 'player', rotation: Math.PI / 2, opacity: 0.6 });
-    scene.add({ x: 560, y: 250, width: 128, height: 128, textureId: 'player', rotation: -Math.PI / 4 });
+    // сцена-демо
+    scene.add({ x: 200, y: 250, width: 64,  height: 64,  textureId: 'player',
+                physics: { enabled: true, type: 'dynamic', shape: 'box',
+                           density: 1, friction: 0.5, restitution: 0.2, radius: 32 } });
+    scene.add({ x: 320, y: 250, width: 64,  height: 64,  textureId: 'player',
+                physics: { enabled: true, type: 'dynamic', shape: 'box',
+                           density: 1, friction: 0.5, restitution: 0.2, radius: 32 } });
+    scene.add({ x: 440, y: 250, width: 128, height: 24, textureId: '__white',
+                physics: { enabled: true, type: 'static', shape: 'box',
+                           density: 1, friction: 0.7, restitution: 0.05, radius: 32 } });
     scene.addLayer('Background');
     scene.moveLayer(scene.layers[scene.layers.length - 1].id, -1);
     setIndicator('saved', '✓ ready');
   }
 
+  // Если в загруженном проекте не было event sheet — ставим demo
+  if (!project.sheet) {
+    project.sheet = defaultEventSheet();
+    eventRuntime.setSheet(project.sheet);
+  } else {
+    eventRuntime.setSheet(project.sheet);
+  }
+
   // --- Topbar: Save / Load / New ---
   document.getElementById('btn-save').addEventListener('click', () => {
-    if (saveProject(scene)) {
+    if (saveProject(project)) {
       setIndicator('saved', '✓ saved ' + new Date().toLocaleTimeString());
     } else {
       setIndicator('error', '✕ save error');
@@ -152,8 +192,9 @@ async function main() {
 
   document.getElementById('btn-load').addEventListener('click', () => {
     if (!hasProject()) { alert('Нет сохранённого проекта'); return; }
-    if (loadProject(scene)) {
+    if (loadProject(project)) {
       editor.clearSelection();
+      eventRuntime.setSheet(project.sheet || defaultEventSheet());
       setIndicator('saved', '✓ loaded');
       editor.onChange();
     } else {
@@ -168,21 +209,29 @@ async function main() {
     scene.layers = [{ id: 'default', name: 'Layer 1', visible: true }];
     scene.nextId = 1;
     scene.nextLayerId = 1;
+    project.sheet = defaultEventSheet();
+    project.vars = {};
+    eventRuntime.setSheet(project.sheet);
     editor.clearSelection();
     setIndicator('dirty', '● new');
     editor.onChange();
   });
 
+  // --- Play / Pause / Stop ---
   const btnPlay  = document.getElementById('btn-play');
   const btnPause = document.getElementById('btn-pause');
   const btnStop  = document.getElementById('btn-stop');
+  const btnDebug = document.getElementById('btn-debug');
+
+  let debugDraw = true;
 
   function refreshPlayButtons() {
     btnPlay.classList.toggle('active', bridge.running && !bridge.paused);
     btnPause.classList.toggle('active', bridge.running && bridge.paused);
     btnStop.classList.toggle('danger', !bridge.running);
-    btnStop.disabled = !bridge.running;
+    btnStop.disabled  = !bridge.running;
     btnPause.disabled = !bridge.running;
+    btnDebug.classList.toggle('toggled', debugDraw);
   }
 
   function doPlay() {
@@ -190,7 +239,8 @@ async function main() {
       bridge.start();
       editor.locked = true;
       editor.clearSelection();
-      console.log('[play] started, bodies:', bridge.bodiesCount);
+      input.clear();
+      console.log('[play] bodies:', bridge.bodiesCount);
     } else if (bridge.paused) {
       bridge.resume();
     }
@@ -198,46 +248,34 @@ async function main() {
   }
 
   function doPause() {
-    if (bridge.running && !bridge.paused) {
-      bridge.pause();
-    }
+    if (bridge.running && !bridge.paused) bridge.pause();
     refreshPlayButtons();
   }
 
   function doStop() {
-    if (bridge.running) {
-      bridge.stop();
-    }
+    if (bridge.running) bridge.stop();
     editor.locked = false;
+    eventRuntime.reset();
+    input.clear();
     refreshPlayButtons();
     editor.onChange();
   }
 
-  btnPlay.addEventListener('click', doPlay);
+  btnPlay .addEventListener('click', doPlay);
   btnPause.addEventListener('click', doPause);
-  btnStop.addEventListener('click', doStop);
+  btnStop .addEventListener('click', doStop);
+  btnDebug.addEventListener('click', () => {
+    debugDraw = !debugDraw;
+    refreshPlayButtons();
+  });
 
-  // F5 / F6 / F7
   window.addEventListener('keydown', (e) => {
-    if (e.code === 'F5') { e.preventDefault(); doPlay(); }
+    if (e.code === 'F5')      { e.preventDefault(); doPlay();  }
     else if (e.code === 'F6') { e.preventDefault(); doPause(); }
-    else if (e.code === 'F7') { e.preventDefault(); doStop(); }
+    else if (e.code === 'F7') { e.preventDefault(); doStop();  }
   });
 
   refreshPlayButtons();
-
-    // --- Debug toggle ---
-  const btnDebug = document.getElementById('btn-debug');
-  let debugDraw = true;
-
-  function refreshDebugBtn() {
-    btnDebug.classList.toggle('toggled', debugDraw);
-  }
-  btnDebug.addEventListener('click', () => {
-    debugDraw = !debugDraw;
-    refreshDebugBtn();
-  });
-  refreshDebugBtn();
 
   // --- onChange: единая точка обновления UI ---
   editor.onChange = () => {
@@ -247,60 +285,48 @@ async function main() {
     scheduleSave();
   };
 
-  // Начальный refresh
   inspector.refresh();
   layersPanel.refresh();
 
-  // --- Батчи: grid / sprites / overlay. Один на категорию. ---
-  // Внутри спрайтов группы по текстурам — через sub-arena в одном буфере.
+  // --- Батчи ---
   const gridBatch    = new SpriteBatch(renderer.device, renderer.format);
   const spriteBatch  = new SpriteBatch(renderer.device, renderer.format);
   const overlayBatch = new SpriteBatch(renderer.device, renderer.format);
   const physicsBatch = new SpriteBatch(renderer.device, renderer.format);
 
-  const spriteBatches = new Map();  // textureId → SpriteBatch
-  function getSpriteBatch(texId) {
-    let b = spriteBatches.get(texId);
-    if (!b) {
-      b = new SpriteBatch(renderer.device, renderer.format);
-      spriteBatches.set(texId, b);
-    }
-    return b;
-  }
-
   let lastStatus = 0;
 
   function update(dt) {
     bridge.step(dt);
+    if (bridge.running && !bridge.paused) {
+      eventRuntime.tick(dt);
+    }
+    input.endFrame();
   }
 
-    function render() {
+  function render() {
     camera.writeMatrix(renderer.uniformData, canvas.width, canvas.height);
     renderer.device.queue.writeBuffer(renderer.uniformBuffer, 0, renderer.uniformData);
 
     const { commandEncoder, renderPass } = renderer.beginFrame();
 
-    // --- 1) Сетка ---
+    // 1) Grid
     renderer.setTexture(assets.get('__white').texture);
     renderPass.setBindGroup(0, renderer.bindGroup);
     gridBatch.begin();
     drawGrid(gridBatch, camera, canvas.width, canvas.height, 32);
     gridBatch.flush(renderPass);
 
-    // --- 2) Спрайты (группы по textureId) ---
+    // 2) Sprites
     spriteBatch.begin();
     for (const obj of scene.getSortedByLayer()) {
       const asset = obj.textureId && assets.get(obj.textureId);
       if (!asset) continue;
-
       spriteBatch.beginGroup(obj.textureId);
-      const cx = obj.x + obj.width  / 2;
+      const cx = obj.x + obj.width / 2;
       const cy = obj.y + obj.height / 2;
-      spriteBatch.drawRotated(
-        cx, cy, obj.width, obj.height, obj.rotation,
-        0, 0, 1, 1,
-        1, 1, 1, obj.opacity
-      );
+      spriteBatch.drawRotated(cx, cy, obj.width, obj.height, obj.rotation,
+        0, 0, 1, 1, 1, 1, 1, obj.opacity);
     }
     spriteBatch.flush(renderPass, (texId) => {
       const a = texId && assets.get(texId);
@@ -309,14 +335,14 @@ async function main() {
       renderPass.setBindGroup(0, renderer.bindGroup);
     });
 
-    // --- 3) Оверлей (selection, hover, box) ---
+    // 3) Overlay
     renderer.setTexture(assets.get('__white').texture);
     renderPass.setBindGroup(0, renderer.bindGroup);
     overlayBatch.begin();
     drawOverlay(overlayBatch, editor, camera);
     overlayBatch.flush(renderPass);
 
-    // --- 4) Physics debug (только когда идёт симуляция) ---
+    // 4) Physics debug
     if (bridge.running && debugDraw) {
       renderer.setTexture(assets.get('__white').texture);
       renderPass.setBindGroup(0, renderer.bindGroup);
@@ -325,22 +351,21 @@ async function main() {
       physicsBatch.flush(renderPass);
     }
 
-    // --- Закрываем проход и сабмитим ---  ← это должно быть САМОЕ последнее
     renderer.endFrame(commandEncoder, renderPass);
 
-    // --- Статус-бар ---
+    // --- Status bar ---
     const now = performance.now();
     if (now - lastStatus > 100) {
       lastStatus = now;
       const w = controller.mouseWorld;
+      const state = bridge.running ? (bridge.paused ? 'PAUSED' : 'PLAYING') : 'EDITING';
       statusEl.textContent =
         `Tool: ${editor.tool}  |  ` +
         `Camera: (${camera.x.toFixed(0)}, ${camera.y.toFixed(0)})  |  ` +
         `Zoom: ${camera.zoom.toFixed(2)}×  |  ` +
         `Mouse: (${w.x.toFixed(0)}, ${w.y.toFixed(0)})  |  ` +
-        `Selected: ${editor.selection.size} / ${scene.objects.length}  |  ` +
-        `Bodies: ${bridge.bodiesCount}` +
-        `  |  ${bridge.running ? (bridge.paused ? 'PAUSED' : 'PLAYING') : 'EDITING'}`
+        `Selected: ${editor.selection.size}/${scene.objects.length}  |  ` +
+        `Bodies: ${bridge.bodiesCount}  |  ${state}`;
     }
   }
 

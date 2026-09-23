@@ -91,7 +91,9 @@ export class BodyStore {
       const area = (shape === ShapeType.CIRCLE)
         ? Math.PI * radius * radius
         : (halfW * 2) * (halfH * 2);
-      const mass = Math.max(1e-4, density * area);
+      // 0.001 — "кг на пиксель²": при density=1 тело 40×40 весит ~1.6,
+      // импульс 800 даёт Δv ≈ 500 px/s, что даёт прыжок ~128 px.
+      const mass = Math.max(1e-4, density * area * 0.001);
       this.invMass[i]    = 1 / mass;
       this.invInertia[i] = 0;  // 3.4
     }
