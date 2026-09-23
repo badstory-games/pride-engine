@@ -8,6 +8,7 @@ import { InputState } from './engine/input-state.js';
 import { PhysicsBridge } from './engine/physics-bridge.js';
 import { drawPhysicsDebug } from './engine/physics/debug-draw.js';
 
+import { registry } from './engine/events/registry.js';
 import { registerConditions } from './engine/events/conditions.js';
 import { registerActions }    from './engine/events/actions.js';
 import { EventRuntime }       from './engine/events/runtime.js';
@@ -20,17 +21,19 @@ import { drawOverlay } from './editor/overlay.js';
 import { ShortcutsModal } from './editor/shortcuts-modal.js';
 import { Inspector } from './editor/inspector.js';
 import { LayersPanel } from './editor/layers-panel.js';
-import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
-import { Tabs }            from './editor/tabs.js';
+import { Tabs } from './editor/tabs.js';
 import { EventSheetPanel } from './editor/event-sheet-panel.js';
+import { EventPalette }     from './editor/event-palette.js';
+
+import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
 
 async function main() {
-  // --- Регистрация условий/действий (один раз) ---
+  // --- Регистрация условий/действий ---
   registerConditions();
   registerActions();
 
-  const canvas = document.getElementById('pride-canvas');
-  const fpsEl  = document.getElementById('fps');
+  const canvas   = document.getElementById('pride-canvas');
+  const fpsEl    = document.getElementById('fps');
   const statusEl = document.getElementById('status');
 
   const renderer = new Renderer();
@@ -107,20 +110,6 @@ async function main() {
     time:  performance.now() / 1000,
   }));
 
-    // --- Event Sheet view ---
-  const eventSheetView  = document.getElementById('event-sheet-view');
-  const eventSheetPanel = new EventSheetPanel(eventSheetView, project, eventRuntime);
-  eventSheetPanel.onChange = () => scheduleSave();
-  eventSheetPanel.refresh();
-
-  // --- View tabs (Layout / Event Sheet) ---
-  const tabs = new Tabs(document.getElementById('view-tabs'), (id) => {
-    const isLayout = id === 'layout';
-    canvas.hidden = !isLayout;
-    eventSheetView.hidden = isLayout;
-    if (!isLayout) eventSheetPanel.refresh();
-  });
-
   // --- Inspector / Layers ---
   const inspector = new Inspector(
     document.getElementById('inspector-content'), editor, scene);
@@ -174,28 +163,74 @@ async function main() {
       console.log('[storage] project restored');
     }
   } else {
-    // сцена-демо
-    scene.add({ x: 200, y: 250, width: 64,  height: 64,  textureId: 'player',
-                physics: { enabled: true, type: 'dynamic', shape: 'box',
-                           density: 1, friction: 0.5, restitution: 0.2, radius: 32 } });
-    scene.add({ x: 320, y: 250, width: 64,  height: 64,  textureId: 'player',
-                physics: { enabled: true, type: 'dynamic', shape: 'box',
-                           density: 1, friction: 0.5, restitution: 0.2, radius: 32 } });
-    scene.add({ x: 440, y: 250, width: 128, height: 24, textureId: '__white',
-                physics: { enabled: true, type: 'static', shape: 'box',
-                           density: 1, friction: 0.7, restitution: 0.05, radius: 32 } });
+    scene.add({
+      x: 200, y: 250, width: 64, height: 64, textureId: 'player', name: 'Player',
+      physics: { enabled: true, type: 'dynamic', shape: 'box',
+                 density: 1, friction: 0.5, restitution: 0.2, radius: 32 },
+    });
+    scene.add({
+      x: 320, y: 250, width: 64, height: 64, textureId: 'player', name: 'Crate',
+      physics: { enabled: true, type: 'dynamic', shape: 'box',
+                 density: 1, friction: 0.5, restitution: 0.2, radius: 32 },
+    });
+    scene.add({
+      x: 440, y: 250, width: 128, height: 24, textureId: '__white', name: 'Ground',
+      physics: { enabled: true, type: 'static', shape: 'box',
+                 density: 1, friction: 0.7, restitution: 0.05, radius: 32 },
+    });
     scene.addLayer('Background');
     scene.moveLayer(scene.layers[scene.layers.length - 1].id, -1);
     setIndicator('saved', '✓ ready');
   }
 
-  // Если в загруженном проекте не было event sheet — ставим demo
+  // --- Event sheet (default или загруженный) ---
   if (!project.sheet) {
     project.sheet = defaultEventSheet();
-    eventRuntime.setSheet(project.sheet);
-  } else {
-    eventRuntime.setSheet(project.sheet);
   }
+  eventRuntime.setSheet(project.sheet);
+
+  // --- Event Sheet view ---
+  const eventSheetPanel = new EventSheetPanel(
+    document.getElementById('event-sheet-main'),
+    project, eventRuntime, scene
+  );
+  eventSheetPanel.onChange = () => scheduleSave();
+  eventSheetPanel.refresh();
+
+  const eventPalette = new EventPalette(
+    document.getElementById('event-palette'),
+    (kind, type) => {
+      const sheet = project.sheet;
+      if (!sheet) return;
+      const first = sheet.events[0];
+      if (!first) { alert('Сначала создайте событие'); return; }
+      const map = kind === 'conditions' ? registry.conditions : registry.actions;
+      const def = map.get(type);
+      if (!def) return;
+      const params = {};
+      for (const p of (def.params || [])) params[p.id] = p.default;
+      if (kind === 'conditions') {
+        first.conditions = first.conditions || [];
+        first.conditions.push({ type, params });
+      } else {
+        first.actions = first.actions || [];
+        first.actions.push({ type, params });
+      }
+      eventRuntime.setSheet(sheet);
+      eventSheetPanel.refresh();
+      scheduleSave();
+    }
+  );
+  eventPalette.attachDnD();
+
+  // --- View tabs ---
+  const eventSheetView = document.getElementById('event-sheet-view');
+  const tabs = new Tabs(document.getElementById('view-tabs'), (id) => {
+    const isLayout = id === 'layout';
+    canvas.hidden = !isLayout;
+    eventSheetView.hidden = isLayout;
+    if (!isLayout) eventSheetPanel.refresh();
+  });
 
   // --- Topbar: Save / Load / New ---
   document.getElementById('btn-save').addEventListener('click', () => {
@@ -210,8 +245,9 @@ async function main() {
     if (!hasProject()) { alert('Нет сохранённого проекта'); return; }
     if (loadProject(project)) {
       editor.clearSelection();
-      eventRuntime.setSheet(project.sheet || defaultEventSheet());
-      eventSheetPanel.setSheet(project.sheet || defaultEventSheet());
+      if (!project.sheet) project.sheet = defaultEventSheet();
+      eventRuntime.setSheet(project.sheet);
+      eventSheetPanel.refresh();
       setIndicator('saved', '✓ loaded');
       editor.onChange();
     } else {
@@ -235,7 +271,7 @@ async function main() {
     editor.onChange();
   });
 
-  // --- Play / Pause / Stop ---
+  // --- Play / Pause / Stop / Debug ---
   const btnPlay  = document.getElementById('btn-play');
   const btnPause = document.getElementById('btn-pause');
   const btnStop  = document.getElementById('btn-stop');
@@ -341,7 +377,7 @@ async function main() {
       const asset = obj.textureId && assets.get(obj.textureId);
       if (!asset) continue;
       spriteBatch.beginGroup(obj.textureId);
-      const cx = obj.x + obj.width / 2;
+      const cx = obj.x + obj.width  / 2;
       const cy = obj.y + obj.height / 2;
       spriteBatch.drawRotated(cx, cy, obj.width, obj.height, obj.rotation,
         0, 0, 1, 1, 1, 1, 1, obj.opacity);

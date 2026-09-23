@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Pride Engine — Stage 3.2</title>
+<title>Pride Engine — Stage 4.3</title>
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -24,7 +24,7 @@
       <button id="btn-debug" class="playbtn" title="Debug draw">◎</button>
     </div>
 
-    <span class="stage">Stage 3.2 — Play / Bridge</span>
+    <span class="stage">Stage 4.3 — Palette / Drag & Drop</span>
   </header>
 
   <div id="main">
@@ -51,17 +51,20 @@
       </div>
     </aside>
 
-      <div id="canvas-wrap">
-        <div id="view-tabs">
-          <button class="vtab active" data-tab="layout">Layout</button>
-          <button class="vtab"        data-tab="event-sheet">Event Sheet</button>
-        </div>
-
-        <canvas id="pride-canvas" width="1024" height="640"></canvas>
-        <div id="fps">FPS: --</div>
-
-        <div id="event-sheet-view" hidden></div>
+    <div id="canvas-wrap">
+      <div id="view-tabs">
+        <button class="vtab active" data-tab="layout">Layout</button>
+        <button class="vtab"        data-tab="event-sheet">Event Sheet</button>
       </div>
+
+      <canvas id="pride-canvas" width="1024" height="640"></canvas>
+      <div id="fps">FPS: --</div>
+
+      <div id="event-sheet-view" hidden>
+        <aside id="event-palette"></aside>
+        <div id="event-sheet-main"></div>
+      </div>
+    </div>
 
     <aside id="right-panel">
       <h3>Inspector</h3>
@@ -124,25 +127,21 @@
         </table>
       </section>
       <section>
+        <h3>Event Sheet</h3>
+        <table class="sc-table">
+          <tr><td><kbd>Drag</kbd> из палитры</td><td>Добавить условие / действие</td></tr>
+          <tr><td><kbd>Dbl-click</kbd> по палитре</td><td>Добавить в первое событие</td></tr>
+          <tr><td><kbd>Drag</kbd> за <kbd>⋮⋮</kbd></td><td>Перенос строки в другое событие</td></tr>
+          <tr><td><kbd>Drag</kbd> за шапку</td><td>Перестановка событий</td></tr>
+        </table>
+      </section>
+      <section>
         <h3>Интерфейс</h3>
         <table class="sc-table">
           <tr><td><kbd>F1</kbd> / <kbd>?</kbd></td><td>Эта справка</td></tr>
         </table>
       </section>
     </div>
-  </div>
-</div>
-
-<div id="picker-modal" class="modal-backdrop" hidden>
-  <div class="modal picker-modal-inner" role="dialog">
-    <header class="modal-header">
-      <h2 class="picker-title">Выбрать</h2>
-      <button class="modal-close" aria-label="Закрыть">×</button>
-    </header>
-    <div class="picker-search-wrap">
-      <input class="picker-search" type="text" placeholder="Поиск по названию или ID...">
-    </div>
-    <div class="picker-list"></div>
   </div>
 </div>
 
