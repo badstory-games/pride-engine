@@ -1,12 +1,12 @@
 export class Editor {
   constructor(scene) {
     this.scene = scene;
-    this.selection = new Set();   // Set<id>
-    this.tool = 'select';         // 'select' | 'rectangle' | 'sprite'
-    this.drag = null;             // { startWorld, originals: Map<id, {x,y}> }
-    this.box = null;              // { x0, y0, x1, y1, additive }
-    this.pendingRect = null;      // { x0, y0, x1, y1 }
-    this.hovered = null;          // id | null
+    this.selection = new Set();
+    this.tool = 'select';
+    this.drag = null;
+    this.box = null;
+    this.pendingRect = null;
+    this.hovered = null;
     this.onChange = () => {};
   }
 

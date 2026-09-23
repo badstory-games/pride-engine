@@ -1,20 +1,17 @@
 import { drawLine, objectCorners } from './draw-helpers.js';
 
 export function drawOverlay(batch, editor, camera) {
-  // --- Selection outlines ---
   for (const id of editor.selection) {
     const obj = editor.scene.get(id);
     if (!obj) continue;
     outlineObject(batch, obj, 1, 0.65, 0.15, 1, 2 / camera.zoom);
   }
 
-  // --- Hover outline (только если не выбран) ---
   if (editor.hovered != null && !editor.selection.has(editor.hovered)) {
     const obj = editor.scene.get(editor.hovered);
     if (obj) outlineObject(batch, obj, 0.45, 0.8, 1, 0.85, 1.5 / camera.zoom);
   }
 
-  // --- Selection box (drag on empty) ---
   if (editor.box) {
     const { x0, y0, x1, y1 } = normalizeRect(editor.box);
     batch.draw(x0, y0, x1 - x0, y1 - y0, 0, 0, 1, 1, 0.3, 0.6, 1, 0.15);
@@ -25,7 +22,6 @@ export function drawOverlay(batch, editor, camera) {
     drawLine(batch, x0, y1, x0, y0, t, 0.5, 0.8, 1, 1);
   }
 
-  // --- Pending rectangle (Rectangle tool) ---
   if (editor.pendingRect) {
     const { x0, y0, x1, y1 } = normalizeRect(editor.pendingRect);
     batch.draw(x0, y0, x1 - x0, y1 - y0, 0, 0, 1, 1, 1, 0.7, 0.2, 0.25);

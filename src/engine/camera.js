@@ -21,7 +21,6 @@ export class Camera {
     };
   }
 
-  /** Зум к точке экрана (курсору). delta — обычно e.deltaY. */
   zoomAt(sx, sy, delta, W, H) {
     const before = this.screenToWorld(sx, sy, W, H);
     const factor = Math.exp(-delta * 0.0015);
@@ -31,16 +30,15 @@ export class Camera {
     this.y += before.y - after.y;
   }
 
-  /** Записывает column-major mat4x4 (world → NDC) в Float32Array(16). */
   writeMatrix(m, W, H) {
     const z = this.zoom;
     const kx =  (2 * z) / W;
     const ky = -(2 * z) / H;
 
-    m[0] = kx; m[1] = 0;  m[2] = 0;  m[3] = 0;   // col 0
-    m[4] = 0;  m[5] = ky; m[6] = 0;  m[7] = 0;   // col 1
-    m[8] = 0;  m[9] = 0;  m[10] = 1; m[11] = 0;  // col 2
-    m[12] = -kx * this.x;                       // col 3 (translation)
+    m[0] = kx; m[1] = 0;  m[2] = 0;  m[3] = 0;
+    m[4] = 0;  m[5] = ky; m[6] = 0;  m[7] = 0;
+    m[8] = 0;  m[9] = 0;  m[10] = 1; m[11] = 0;
+    m[12] = -kx * this.x;
     m[13] = -ky * this.y;
     m[14] = 0;
     m[15] = 1;

@@ -11,12 +11,13 @@ export class GameLoop {
 
     this.frameCount = 0;
     this.fpsTime = 0;
+    this._tick = this.tick.bind(this);
   }
 
   start() {
     this.running = true;
     this.lastTime = performance.now();
-    requestAnimationFrame(this.tick.bind(this));
+    requestAnimationFrame(this._tick);
   }
 
   stop() {
@@ -29,7 +30,7 @@ export class GameLoop {
     let dt = (now - this.lastTime) / 1000;
     this.lastTime = now;
 
-    if (dt > 0.25) dt = 0.25; // защита от лагов
+    if (dt > 0.25) dt = 0.25;
 
     this.accumulator += dt;
 
@@ -40,7 +41,6 @@ export class GameLoop {
 
     this.render(dt);
 
-    // FPS
     this.frameCount++;
     this.fpsTime += dt;
     if (this.fpsTime >= 1) {
@@ -49,6 +49,6 @@ export class GameLoop {
       this.fpsTime = 0;
     }
 
-    requestAnimationFrame(this.tick.bind(this));
+    requestAnimationFrame(this._tick);
   }
 }

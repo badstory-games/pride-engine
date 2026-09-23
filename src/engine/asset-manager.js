@@ -1,10 +1,9 @@
 export class AssetManager {
   constructor(device) {
     this.device = device;
-    this.assets = new Map(); // id → { texture, width, height }
+    this.assets = new Map();
   }
 
-  /** Загрузить PNG по URL через fetch + createImageBitmap. */
   async loadPNG(id, url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
@@ -13,7 +12,6 @@ export class AssetManager {
     return this._upload(id, bitmap);
   }
 
-  /** Загрузить из уже готового ImageBitmap (например, процедурного). */
   loadFromBitmap(id, bitmap) {
     return this._upload(id, bitmap);
   }

@@ -9,6 +9,9 @@ import { Editor } from './editor/editor.js';
 import { EditorController } from './editor/input.js';
 import { drawOverlay } from './editor/overlay.js';
 import { ShortcutsModal } from './editor/shortcuts-modal.js';
+import { Inspector } from './editor/inspector.js';
+import { LayersPanel } from './editor/layers-panel.js';
+import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
 
 async function main() {
   const canvas = document.getElementById('pride-canvas');
@@ -55,26 +58,34 @@ async function main() {
     assets.loadFromBitmap('player', bmp);
   }
 
-  // --- Сцена ---
+  // --- Сцена + Editor ---
   const scene = new Scene();
-  scene.add({ x: 200, y: 250, width: 64,  height: 64,  textureId: 'player' });
-  scene.add({ x: 320, y: 250, width: 64,  height: 64,  textureId: 'player', rotation: Math.PI / 6 });
-  scene.add({ x: 440, y: 250, width: 64,  height: 64,  textureId: 'player', rotation: Math.PI / 2, opacity: 0.6 });
-  scene.add({ x: 560, y: 250, width: 128, height: 128, textureId: 'player', rotation: -Math.PI / 4 });
-
-  // --- Editor + Controller ---
   const editor = new Editor(scene);
   const controller = new EditorController(canvas, camera, editor);
+
+  // --- Inspector ---
+  const inspector = new Inspector(
+    document.getElementById('inspector-content'),
+    editor,
+    scene
+  );
+  inspector.setTextures(['player', '__white']);
+
+  // --- Layers panel ---
+  const layersPanel = new LayersPanel(
+    document.getElementById('layers-panel'),
+    editor,
+    scene
+  );
 
   // --- Shortcuts modal ---
   const shortcutsModal = new ShortcutsModal();
   document.getElementById('btn-shortcuts')
     .addEventListener('click', () => shortcutsModal.toggle());
-
   controller.onToggleShortcuts = () => shortcutsModal.toggle();
   controller.isShortcutsOpen  = () => shortcutsModal.isOpen;
 
-  // --- Toolbar ---
+  // --- Toolbar buttons ---
   const toolButtons = document.querySelectorAll('.tool');
   function refreshToolButtons() {
     toolButtons.forEach((b) => {
@@ -82,21 +93,106 @@ async function main() {
     });
   }
   toolButtons.forEach((b) => {
-    b.addEventListener('click', () => {
-      controller.setTool(b.dataset.tool);
-      refreshToolButtons();
-    });
+    b.addEventListener('click', () => controller.setTool(b.dataset.tool));
   });
   refreshToolButtons();
 
+  // --- Save indicator + debounced autosave ---
+  const saveIndicator = document.getElementById('save-indicator');
+  let saveTimer = 0;
+
+  function setIndicator(cls, text) {
+    saveIndicator.className = 'save-indicator ' + cls;
+    saveIndicator.textContent = text;
+  }
+
+  function scheduleSave() {
+    setIndicator('dirty', '● unsaved');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (saveProject(scene)) {
+        setIndicator('saved', '✓ saved ' + new Date().toLocaleTimeString());
+      } else {
+        setIndicator('error', '✕ save error');
+      }
+    }, 500);
+  }
+
+  // --- Первая загрузка: восстановить или создать демо ---
+  if (hasProject()) {
+    if (loadProject(scene)) {
+      setIndicator('saved', '✓ loaded');
+      console.log('[storage] project restored from localStorage');
+    }
+  } else {
+    scene.add({ x: 200, y: 250, width: 64,  height: 64,  textureId: 'player' });
+    scene.add({ x: 320, y: 250, width: 64,  height: 64,  textureId: 'player', rotation: Math.PI / 6 });
+    scene.add({ x: 440, y: 250, width: 64,  height: 64,  textureId: 'player', rotation: Math.PI / 2, opacity: 0.6 });
+    scene.add({ x: 560, y: 250, width: 128, height: 128, textureId: 'player', rotation: -Math.PI / 4 });
+    scene.addLayer('Background');
+    scene.moveLayer(scene.layers[scene.layers.length - 1].id, -1);
+    setIndicator('saved', '✓ ready');
+  }
+
+  // --- Topbar: Save / Load / New ---
+  document.getElementById('btn-save').addEventListener('click', () => {
+    if (saveProject(scene)) {
+      setIndicator('saved', '✓ saved ' + new Date().toLocaleTimeString());
+    } else {
+      setIndicator('error', '✕ save error');
+    }
+  });
+
+  document.getElementById('btn-load').addEventListener('click', () => {
+    if (!hasProject()) { alert('Нет сохранённого проекта'); return; }
+    if (loadProject(scene)) {
+      editor.clearSelection();
+      setIndicator('saved', '✓ loaded');
+      editor.onChange();
+    } else {
+      setIndicator('error', '✕ load error');
+    }
+  });
+
+  document.getElementById('btn-new').addEventListener('click', () => {
+    if (!confirm('Создать новый проект? Несохранённое будет потеряно.')) return;
+    clearProject();
+    scene.objects = [];
+    scene.layers = [{ id: 'default', name: 'Layer 1', visible: true }];
+    scene.nextId = 1;
+    scene.nextLayerId = 1;
+    editor.clearSelection();
+    setIndicator('dirty', '● new');
+    editor.onChange();
+  });
+
+  // --- onChange: единая точка обновления UI ---
   editor.onChange = () => {
     refreshToolButtons();
-    // зарезервировано под undo/redo и автосохранение
+    inspector.refresh();
+    layersPanel.refresh();
+    scheduleSave();
   };
 
+  // Начальный refresh
+  inspector.refresh();
+  layersPanel.refresh();
+
+  // --- Батчи: grid / sprites / overlay. Один на категорию. ---
+  // Внутри спрайтов группы по текстурам — через sub-arena в одном буфере.
   const gridBatch    = new SpriteBatch(renderer.device, renderer.format);
   const spriteBatch  = new SpriteBatch(renderer.device, renderer.format);
   const overlayBatch = new SpriteBatch(renderer.device, renderer.format);
+
+  const spriteBatches = new Map();  // textureId → SpriteBatch
+  function getSpriteBatch(texId) {
+    let b = spriteBatches.get(texId);
+    if (!b) {
+      b = new SpriteBatch(renderer.device, renderer.format);
+      spriteBatches.set(texId, b);
+    }
+    return b;
+  }
 
   let lastStatus = 0;
 
@@ -104,44 +200,49 @@ async function main() {
 
   function render() {
     camera.writeMatrix(renderer.uniformData, canvas.width, canvas.height);
-  renderer.device.queue.writeBuffer(renderer.uniformBuffer, 0, renderer.uniformData);
+    renderer.device.queue.writeBuffer(renderer.uniformBuffer, 0, renderer.uniformData);
 
-  const { commandEncoder, renderPass } = renderer.beginFrame();
+    const { commandEncoder, renderPass } = renderer.beginFrame();
 
-  // --- 1) Сетка (белая текстура) ---
-  renderer.setTexture(assets.get('__white').texture);
-  renderPass.setBindGroup(0, renderer.bindGroup);
-  gridBatch.begin();
-  drawGrid(gridBatch, camera, canvas.width, canvas.height, 32);
-  gridBatch.end(renderPass);
+    // --- 1) Сетка ---
+    renderer.setTexture(assets.get('__white').texture);
+    renderPass.setBindGroup(0, renderer.bindGroup);
+    gridBatch.begin();
+    drawGrid(gridBatch, camera, canvas.width, canvas.height, 32);
+    gridBatch.flush(renderPass);   // одна текстура, binder не нужен
 
-  // --- 2) Спрайты (player.png) ---
-  renderer.setTexture(assets.get('player').texture);
-  renderPass.setBindGroup(0, renderer.bindGroup);
-  spriteBatch.begin();
-  for (const obj of scene.getSortedByLayer()) {
-    const a = obj.textureId && assets.get(obj.textureId);
-    if (!a) continue;
-    const cx = obj.x + obj.width / 2;
-    const cy = obj.y + obj.height / 2;
-    spriteBatch.drawRotated(
-      cx, cy, obj.width, obj.height, obj.rotation,
-      0, 0, 1, 1,
-      1, 1, 1, obj.opacity
-    );
-  }
-  spriteBatch.end(renderPass);
+    // --- 2) Спрайты: группы по textureId в одном буфере ---
+    spriteBatch.begin();
+    for (const obj of scene.getSortedByLayer()) {
+      const asset = obj.textureId && assets.get(obj.textureId);
+      if (!asset) continue;
 
-  // --- 3) Оверлей (белая текстура) ---
-  renderer.setTexture(assets.get('__white').texture);
-  renderPass.setBindGroup(0, renderer.bindGroup);
-  overlayBatch.begin();
-  drawOverlay(overlayBatch, editor, camera);
-  overlayBatch.end(renderPass);
+      spriteBatch.beginGroup(obj.textureId);   // склеит подряд идущие с той же текстурой
+      const cx = obj.x + obj.width  / 2;
+      const cy = obj.y + obj.height / 2;
+      spriteBatch.drawRotated(
+        cx, cy, obj.width, obj.height, obj.rotation,
+        0, 0, 1, 1,
+        1, 1, 1, obj.opacity
+      );
+    }
+    spriteBatch.flush(renderPass, (texId) => {
+      const a = texId && assets.get(texId);
+      if (!a) return;
+      renderer.setTexture(a.texture);
+      renderPass.setBindGroup(0, renderer.bindGroup);
+    });
 
-  renderer.endFrame(commandEncoder, renderPass)
+    // --- 3) Оверлей ---
+    renderer.setTexture(assets.get('__white').texture);
+    renderPass.setBindGroup(0, renderer.bindGroup);
+    overlayBatch.begin();
+    drawOverlay(overlayBatch, editor, camera);
+    overlayBatch.flush(renderPass);
 
-    // Статус-бар, 10 раз в секунду
+    renderer.endFrame(commandEncoder, renderPass);
+
+    // --- Статус-бар ---
     const now = performance.now();
     if (now - lastStatus > 100) {
       lastStatus = now;

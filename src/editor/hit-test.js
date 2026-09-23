@@ -6,7 +6,6 @@ export function hitTest(obj, wx, wy) {
   const dx = wx - cx;
   const dy = wy - cy;
 
-  // обратный поворот: world → local
   const cos = Math.cos(-obj.rotation);
   const sin = Math.sin(-obj.rotation);
   const lx = dx * cos - dy * sin;
@@ -15,7 +14,6 @@ export function hitTest(obj, wx, wy) {
   return Math.abs(lx) <= obj.width / 2 && Math.abs(ly) <= obj.height / 2;
 }
 
-/** Ищет самый верхний объект под точкой (по порядку отрисовки). */
 export function pickTopmost(scene, wx, wy) {
   const sorted = scene.getSortedByLayer();
   for (let i = sorted.length - 1; i >= 0; i--) {
@@ -24,7 +22,6 @@ export function pickTopmost(scene, wx, wy) {
   return null;
 }
 
-/** Объекты, чей центр попал в прямоугольник (простая, предсказуемая логика). */
 export function objectsInRect(scene, x0, y0, x1, y1) {
   const minX = Math.min(x0, x1), maxX = Math.max(x0, x1);
   const minY = Math.min(y0, y1), maxY = Math.max(y0, y1);

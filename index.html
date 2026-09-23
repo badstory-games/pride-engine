@@ -2,24 +2,44 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Pride Engine — Stage 2.1</title>
+<title>Pride Engine — Stage 2.3</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #1a1a1a; color: #ddd;
                font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
   #app { display: flex; flex-direction: column; height: 100vh; }
 
+  /* ---------- TOPBAR ---------- */
   #topbar {
     height: 32px; display: flex; align-items: center; gap: 12px;
     padding: 0 12px; background: #252525; border-bottom: 1px solid #333;
     font-weight: 600;
   }
   #topbar .stage { color: #666; font-weight: 400; margin-left: auto; }
+  #btn-shortcuts {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #2d4a6b; color: #cfe3f5; border: 1px solid #4a7ea8;
+    font: 700 12px/1 system-ui; cursor: pointer; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #btn-shortcuts:hover { background: #3a5c82; color: #fff; }
+  .topbar-group { display: flex; gap: 6px; margin-left: 12px; }
+  .topbtn {
+    background: #2a2a2a; color: #ccc; border: 1px solid #3a3a3a;
+    padding: 3px 10px; border-radius: 3px; font: 12px system-ui;
+    cursor: pointer;
+  }
+  .topbtn:hover { background: #333; color: #fff; }
+  .save-indicator { margin-left: 10px; font: 11px monospace; color: #666; }
+  .save-indicator.saved { color: #6c9; }
+  .save-indicator.dirty { color: #ea6; }
+  .save-indicator.error { color: #e66; }
 
+  /* ---------- MAIN 3-COLUMN ---------- */
   #main { flex: 1; display: flex; min-height: 0; }
 
   aside {
-    width: 200px; background: #202020; border-right: 1px solid #333;
+    width: 220px; background: #202020; border-right: 1px solid #333;
     padding: 10px; overflow-y: auto;
   }
   aside:last-child { border-right: none; border-left: 1px solid #333; }
@@ -31,6 +51,16 @@
     color: #555; font-style: italic; padding: 8px;
     border: 1px dashed #333; border-radius: 4px; text-align: center;
   }
+  .tool-list { display: flex; flex-direction: column; gap: 4px; }
+  .tool {
+    background: #2a2a2a; color: #ccc; border: 1px solid #3a3a3a;
+    padding: 6px 10px; text-align: left; border-radius: 3px;
+    font: 12px system-ui; cursor: pointer;
+  }
+  .tool:hover { background: #303030; }
+  .tool.active { background: #2d4a6b; border-color: #4a7ea8; color: #fff; }
+  .hint { color: #777; font-size: 11px; line-height: 1.7; }
+  .hint b { color: #aaa; }
 
   #canvas-wrap {
     flex: 1; position: relative; display: flex;
@@ -42,7 +72,6 @@
     box-shadow: 0 0 0 1px #333;
     display: block;
   }
-
   #fps {
     position: absolute; top: 8px; left: 8px;
     font: 12px monospace; background: rgba(0,0,0,0.6);
@@ -50,33 +79,83 @@
     pointer-events: none;
   }
 
+  /* ---------- STATUS ---------- */
   #status {
     height: 24px; display: flex; align-items: center; gap: 16px;
     padding: 0 12px; background: #252525; border-top: 1px solid #333;
     font: 11px monospace; color: #888;
   }
-    .tool-list { display: flex; flex-direction: column; gap: 4px; }
-  .tool {
-    background: #2a2a2a; color: #ccc; border: 1px solid #3a3a3a;
-    padding: 6px 10px; text-align: left; border-radius: 3px;
-    font: 12px system-ui; cursor: pointer;
-  }
-  .tool:hover { background: #303030; }
-  .tool.active {
-    background: #2d4a6b; border-color: #4a7ea8; color: #fff;
-  }
-  .hint { color: #777; font-size: 11px; line-height: 1.7; }
-  .hint b { color: #aaa; }
-    /* --- Кнопка "?" в топбаре --- */
-  #btn-shortcuts {
-    width: 22px; height: 22px; border-radius: 50%;
-    background: #2d4a6b; color: #cfe3f5; border: 1px solid #4a7ea8;
-    font: 700 12px/1 system-ui; cursor: pointer; padding: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-  }
-  #btn-shortcuts:hover { background: #3a5c82; color: #fff; }
 
-  /* --- Модалка --- */
+  /* ---------- INSPECTOR ---------- */
+  #inspector-content { font: 12px system-ui; }
+  .inspector-empty {
+    color: #555; font-style: italic; padding: 8px;
+    border: 1px dashed #333; border-radius: 4px; text-align: center;
+  }
+  .inspector-form { display: flex; flex-direction: column; gap: 6px; }
+  .inspector-row {
+    display: grid; grid-template-columns: 78px 1fr; gap: 8px;
+    align-items: center;
+  }
+  .inspector-row label { color: #888; }
+  .inspector-row input[type="number"],
+  .inspector-row input[type="text"],
+  .inspector-row select {
+    background: #2a2a2a; border: 1px solid #3a3a3a; color: #ddd;
+    padding: 3px 6px; border-radius: 3px; font: 12px system-ui;
+    width: 100%; min-width: 0;
+  }
+  .inspector-row input:focus, .inspector-row select:focus {
+    outline: none; border-color: #4a7ea8;
+  }
+  .inspector-row input[readonly] { color: #666; }
+  .inspector-row-check { grid-template-columns: 1fr; }
+
+  /* ---------- LAYERS ---------- */
+  #layers-panel {
+    background: #202020; border-top: 1px solid #333;
+    max-height: 180px; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .layers-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 12px; border-bottom: 1px solid #2a2a2a;
+  }
+  .layers-header h3 {
+    margin: 0; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1px; color: #888;
+  }
+  .layers-list { overflow-y: auto; padding: 4px 0; }
+  .layer-row {
+    display: grid;
+    grid-template-columns: 28px 1fr 40px 24px 24px 24px;
+    gap: 4px; padding: 3px 10px; align-items: center;
+    font: 12px system-ui; color: #bbb;
+  }
+  .layer-row:hover { background: #262626; }
+  .layer-row .layer-vis {
+    background: transparent; border: none; color: #aaa;
+    cursor: pointer; font: 14px/1 system-ui; padding: 0;
+  }
+  .layer-row .layer-name { cursor: pointer; }
+  .layer-row .layer-count { color: #666; text-align: right; font-size: 11px; }
+  .layer-row .layer-btn {
+    background: transparent; border: 1px solid transparent;
+    color: #888; cursor: pointer; font: 12px/1 system-ui;
+    padding: 2px 4px; border-radius: 3px;
+  }
+  .layer-row .layer-btn:hover:not(:disabled) {
+    color: #fff; border-color: #3a3a3a; background: #2a2a2a;
+  }
+  .layer-row .layer-btn:disabled { opacity: 0.25; cursor: default; }
+  .layer-row .layer-del:hover { color: #e66; border-color: #e66; }
+  .layer-row .layer-name {
+    cursor: pointer;
+    user-select: none;    /* ← запрещает синее выделение текста */
+    -webkit-user-select: none;
+  }
+
+  /* ---------- SHORTCUTS MODAL ---------- */
   .modal-backdrop {
     position: fixed; inset: 0; z-index: 100;
     background: rgba(0, 0, 0, 0.55);
@@ -134,8 +213,15 @@
   <header id="topbar">
     <span>Pride Engine</span>
     <button id="btn-shortcuts" title="Горячие клавиши (F1)">?</button>
-    <span class="stage">Stage 2.2 — Input / Hit-test / Shortcuts</span>
+    <div class="topbar-group">
+      <button id="btn-new"  class="topbtn">New</button>
+      <button id="btn-save" class="topbtn">Save</button>
+      <button id="btn-load" class="topbtn">Load</button>
+    </div>
+    <span id="save-indicator" class="save-indicator">—</span>
+    <span class="stage">Stage 2.3 — Inspector / Layers / Save</span>
   </header>
+
   <div id="main">
     <aside id="left-panel">
       <h3>Tools</h3>
@@ -144,7 +230,7 @@
         <button class="tool" data-tool="rectangle" title="Rectangle (R / 2)">▭ Rect</button>
         <button class="tool" data-tool="sprite" title="Sprite (S / 3)">✦ Sprite</button>
       </div>
-    
+
       <h3 style="margin-top:20px">Hint</h3>
       <div class="hint">
         <div><b>MMB</b> / <b>Alt+LMB</b> — pan</div>
@@ -159,17 +245,24 @@
         </div>
       </div>
     </aside>
+
     <div id="canvas-wrap">
       <canvas id="pride-canvas" width="1024" height="640"></canvas>
       <div id="fps">FPS: --</div>
     </div>
+
     <aside id="right-panel">
       <h3>Inspector</h3>
-      <div class="placeholder">No selection<br>(Stage 2.3)</div>
+      <div id="inspector-content"></div>
     </aside>
   </div>
+
+  <div id="layers-panel"></div>
+
   <footer id="status">Ready</footer>
 </div>
+
+<!-- ---------- SHORTCUTS MODAL ---------- -->
 <div id="shortcuts-modal" class="modal-backdrop" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sc-title">
     <header class="modal-header">
@@ -206,7 +299,7 @@
       <section>
         <h3>Редактирование</h3>
         <table class="sc-table">
-          <tr><td><kbd>Drag</kbd> по объекту</td><td>Переместить (группой, если выбрано несколько)</td></tr>
+          <tr><td><kbd>Drag</kbd> по объекту</td><td>Переместить (группой)</td></tr>
           <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Удалить выделенное</td></tr>
         </table>
       </section>
@@ -219,6 +312,7 @@
     </div>
   </div>
 </div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

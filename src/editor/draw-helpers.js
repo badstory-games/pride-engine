@@ -11,7 +11,6 @@ export function drawLine(batch, x1, y1, x2, y2, thickness, r, g, b, a) {
   batch.drawRotated(cx, cy, len, thickness, angle, 0, 0, 1, 1, r, g, b, a);
 }
 
-/** Углы ориентированного bbox (TL, TR, BR, BL) в мировых координатах. */
 export function objectCorners(obj) {
   const hw = obj.width / 2;
   const hh = obj.height / 2;

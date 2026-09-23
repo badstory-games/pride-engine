@@ -11,10 +11,12 @@ export class EditorController {
     this.panning = false;
     this._panStart = null;
 
+    this.onToggleShortcuts = null;
+    this.isShortcutsOpen = null;
+
     this._bind();
   }
 
-  // --- helpers ---
   _eventScreen(e) {
     const r = this.canvas.getBoundingClientRect();
     return {
@@ -41,7 +43,6 @@ export class EditorController {
     this.editor.onChange();
   }
 
-  // --- events ---
   _bind() {
     const c = this.canvas;
     const ed = this.editor;
@@ -55,7 +56,6 @@ export class EditorController {
       this.mouseScreen = s;
       this.mouseWorld = w;
 
-      // Pan: MMB или Alt+LMB
       if (e.button === 1 || (e.button === 0 && e.altKey)) {
         e.preventDefault();
         this.panning = true;
@@ -77,7 +77,6 @@ export class EditorController {
           } else if (!ed.selection.has(hit.id)) {
             ed.select(hit.id, false);
           }
-          // начать перетаскивание всей выделенной группы
           if (ed.selection.has(hit.id)) {
             const originals = new Map();
             for (const id of ed.selection) {
@@ -127,6 +126,8 @@ export class EditorController {
           o.x = orig.x + dx;
           o.y = orig.y + dy;
         }
+        // обновляем инспектор, но НЕ сохраняем проект на каждое движение
+        ed.onChange();
       } else if (ed.box) {
         ed.box.x1 = w.x;
         ed.box.y1 = w.y;
@@ -190,28 +191,28 @@ export class EditorController {
       if (e.button === 1) e.preventDefault();
     });
 
-        // ------------- KEYDOWN -------------
+    // ------------- KEYDOWN -------------
     window.addEventListener('keydown', (e) => {
-      // F1 и "?" — открыть/закрыть справку. Работает всегда, независимо от фокуса.
-      if (e.code === 'F1' || (e.key === '?' )) {
+      // F1 / ? — справка. Работает всегда, независимо от фокуса.
+      if (e.code === 'F1' || e.key === '?') {
         e.preventDefault();
         e.stopPropagation();
-        this.onToggleShortcuts && this.onToggleShortcuts();
+        if (this.onToggleShortcuts) this.onToggleShortcuts();
         return;
       }
-      // Esc закрывает справку первым делом
+
+      // Esc при открытой справке — закрыть справку
       if (e.code === 'Escape' && this.isShortcutsOpen && this.isShortcutsOpen()) {
-        this.onToggleShortcuts && this.onToggleShortcuts();
         e.preventDefault();
+        if (this.onToggleShortcuts) this.onToggleShortcuts();
         return;
       }
-      
+
       const tag = document.activeElement && document.activeElement.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
       const mod = e.ctrlKey || e.metaKey;
 
-      // Delete / Backspace — удалить выделенное
       if (e.code === 'Delete' || e.code === 'Backspace') {
         if (ed.selection.size) {
           ed.deleteSelected();
@@ -221,7 +222,6 @@ export class EditorController {
         return;
       }
 
-      // Esc — снять выделение
       if (e.code === 'Escape') {
         ed.clearSelection();
         ed.box = null;
@@ -230,7 +230,6 @@ export class EditorController {
         return;
       }
 
-      // Ctrl+A — выделить всё (работает на любой раскладке)
       if (mod && e.code === 'KeyA') {
         ed.selectMany(ed.scene.objects.map((o) => o.id), false);
         e.preventDefault();
@@ -238,10 +237,8 @@ export class EditorController {
         return;
       }
 
-      // Если зажат Ctrl/Meta — не трогаем остальные буквенные шорткаты
       if (mod) return;
 
-      // Инструменты — по физической клавише
       if (e.code === 'Digit1' || e.code === 'KeyQ') {
         this.setTool('select');
       } else if (e.code === 'Digit2' || e.code === 'KeyR') {

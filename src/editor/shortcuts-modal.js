@@ -5,7 +5,6 @@ export class ShortcutsModal {
 
     this.closeBtn.addEventListener('click', () => this.close());
     this.el.addEventListener('mousedown', (e) => {
-      // клик по фону (не по содержимому) — закрыть
       if (e.target === this.el) this.close();
     });
   }

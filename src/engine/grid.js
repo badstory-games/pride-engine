@@ -10,7 +10,7 @@ export function drawGrid(batch, camera, W, H, gridSize = 32) {
   const startX = Math.floor(minX / gridSize) * gridSize;
   const startY = Math.floor(minY / gridSize) * gridSize;
 
-  const thickness = 1 / camera.zoom;   // 1 пиксель на экране
+  const thickness = 1 / camera.zoom;
   const r = 1, g = 1, b = 1, a = 0.07;
 
   for (let x = startX; x <= maxX; x += gridSize) {

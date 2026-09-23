@@ -39,11 +39,11 @@ export class Renderer {
         module: shaderModule,
         entryPoint: 'vs_main',
         buffers: [{
-          arrayStride: 8 * 4, // 2 pos + 2 uv + 4 color = 8 float * 4 байта
+          arrayStride: 8 * 4,
           attributes: [
-            { shaderLocation: 0, offset: 0,  format: 'float32x2' }, // position
-            { shaderLocation: 1, offset: 8,  format: 'float32x2' }, // uv
-            { shaderLocation: 2, offset: 16, format: 'float32x4' }, // color
+            { shaderLocation: 0, offset: 0,  format: 'float32x2' },
+            { shaderLocation: 1, offset: 8,  format: 'float32x2' },
+            { shaderLocation: 2, offset: 16, format: 'float32x4' },
           ],
         }],
       },
