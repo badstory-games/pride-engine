@@ -55,18 +55,109 @@
     padding: 0 12px; background: #252525; border-top: 1px solid #333;
     font: 11px monospace; color: #888;
   }
+    .tool-list { display: flex; flex-direction: column; gap: 4px; }
+  .tool {
+    background: #2a2a2a; color: #ccc; border: 1px solid #3a3a3a;
+    padding: 6px 10px; text-align: left; border-radius: 3px;
+    font: 12px system-ui; cursor: pointer;
+  }
+  .tool:hover { background: #303030; }
+  .tool.active {
+    background: #2d4a6b; border-color: #4a7ea8; color: #fff;
+  }
+  .hint { color: #777; font-size: 11px; line-height: 1.7; }
+  .hint b { color: #aaa; }
+    /* --- Кнопка "?" в топбаре --- */
+  #btn-shortcuts {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #2d4a6b; color: #cfe3f5; border: 1px solid #4a7ea8;
+    font: 700 12px/1 system-ui; cursor: pointer; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #btn-shortcuts:hover { background: #3a5c82; color: #fff; }
+
+  /* --- Модалка --- */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(2px);
+  }
+  .modal-backdrop[hidden] { display: none; }
+
+  .modal {
+    background: #232323; border: 1px solid #3a3a3a; border-radius: 6px;
+    width: min(720px, 90vw); max-height: 85vh;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    display: flex; flex-direction: column;
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid #333;
+  }
+  .modal-header h2 {
+    margin: 0; font-size: 14px; letter-spacing: 1px;
+    text-transform: uppercase; color: #cfe3f5;
+  }
+  .modal-close {
+    background: transparent; border: none; color: #888;
+    font: 20px/1 system-ui; cursor: pointer; padding: 0 4px;
+  }
+  .modal-close:hover { color: #fff; }
+
+  .modal-body {
+    padding: 16px 20px; overflow-y: auto;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px 32px;
+  }
+  .modal-body section h3 {
+    margin: 0 0 8px; font-size: 11px; letter-spacing: 1px;
+    text-transform: uppercase; color: #7fa8d4; font-weight: 600;
+  }
+  .sc-table {
+    width: 100%; border-collapse: collapse;
+    font: 12px system-ui; color: #ccc;
+  }
+  .sc-table tr td { padding: 4px 0; vertical-align: top; }
+  .sc-table tr td:first-child {
+    width: 46%; white-space: nowrap; color: #aaa;
+  }
+  .sc-table kbd {
+    display: inline-block; padding: 1px 6px; min-width: 14px;
+    background: #2d2d2d; border: 1px solid #444; border-bottom-width: 2px;
+    border-radius: 3px; font: 11px/1.5 ui-monospace, monospace;
+    color: #e8e8e8; text-align: center; margin: 0 1px;
+  }
 </style>
 </head>
 <body>
 <div id="app">
   <header id="topbar">
     <span>Pride Engine</span>
-    <span class="stage">Stage 2.1 — Scene / Camera / Grid</span>
+    <button id="btn-shortcuts" title="Горячие клавиши (F1)">?</button>
+    <span class="stage">Stage 2.2 — Input / Hit-test / Shortcuts</span>
   </header>
   <div id="main">
     <aside id="left-panel">
       <h3>Tools</h3>
-      <div class="placeholder">Select / Place<br>(Stage 2.2)</div>
+      <div class="tool-list">
+        <button class="tool" data-tool="select" title="Select (Q / 1)">▣ Select</button>
+        <button class="tool" data-tool="rectangle" title="Rectangle (R / 2)">▭ Rect</button>
+        <button class="tool" data-tool="sprite" title="Sprite (S / 3)">✦ Sprite</button>
+      </div>
+    
+      <h3 style="margin-top:20px">Hint</h3>
+      <div class="hint">
+        <div><b>MMB</b> / <b>Alt+LMB</b> — pan</div>
+        <div><b>Wheel</b> — zoom</div>
+        <div><b>Shift+Click</b> — multi-select</div>
+        <div><b>Drag empty</b> — box select</div>
+        <div><b>Delete</b> — удалить</div>
+        <div><b>Ctrl+A</b> — выделить всё</div>
+        <div><b>Esc</b> — снять выделение</div>
+        <div style="margin-top:6px;color:#7fa8d4">
+          <b>F1</b> — все горячие клавиши
+        </div>
+      </div>
     </aside>
     <div id="canvas-wrap">
       <canvas id="pride-canvas" width="1024" height="640"></canvas>
@@ -78,6 +169,55 @@
     </aside>
   </div>
   <footer id="status">Ready</footer>
+</div>
+<div id="shortcuts-modal" class="modal-backdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sc-title">
+    <header class="modal-header">
+      <h2 id="sc-title">Горячие клавиши</h2>
+      <button class="modal-close" aria-label="Закрыть">×</button>
+    </header>
+    <div class="modal-body">
+      <section>
+        <h3>Инструменты</h3>
+        <table class="sc-table">
+          <tr><td><kbd>Q</kbd> / <kbd>1</kbd></td><td>Select</td></tr>
+          <tr><td><kbd>R</kbd> / <kbd>2</kbd></td><td>Rectangle</td></tr>
+          <tr><td><kbd>S</kbd> / <kbd>3</kbd></td><td>Sprite</td></tr>
+        </table>
+      </section>
+      <section>
+        <h3>Камера</h3>
+        <table class="sc-table">
+          <tr><td><kbd>MMB</kbd></td><td>Pan (удерживая, двигать мышью)</td></tr>
+          <tr><td><kbd>Alt</kbd> + <kbd>LMB</kbd></td><td>Pan (альтернатива)</td></tr>
+          <tr><td><kbd>Wheel</kbd></td><td>Zoom к курсору</td></tr>
+        </table>
+      </section>
+      <section>
+        <h3>Выделение</h3>
+        <table class="sc-table">
+          <tr><td><kbd>LMB</kbd></td><td>Выбрать объект</td></tr>
+          <tr><td><kbd>Shift</kbd> + <kbd>LMB</kbd></td><td>Добавить / убрать из выделения</td></tr>
+          <tr><td><kbd>Drag</kbd> по пустому</td><td>Box-select</td></tr>
+          <tr><td><kbd>Ctrl</kbd> + <kbd>A</kbd></td><td>Выделить всё</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Снять выделение</td></tr>
+        </table>
+      </section>
+      <section>
+        <h3>Редактирование</h3>
+        <table class="sc-table">
+          <tr><td><kbd>Drag</kbd> по объекту</td><td>Переместить (группой, если выбрано несколько)</td></tr>
+          <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Удалить выделенное</td></tr>
+        </table>
+      </section>
+      <section>
+        <h3>Интерфейс</h3>
+        <table class="sc-table">
+          <tr><td><kbd>F1</kbd> / <kbd>?</kbd></td><td>Эта справка</td></tr>
+        </table>
+      </section>
+    </div>
+  </div>
 </div>
 <script type="module" src="./src/main.js"></script>
 </body>
