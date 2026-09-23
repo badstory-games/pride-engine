@@ -51,10 +51,17 @@
       </div>
     </aside>
 
-    <div id="canvas-wrap">
-      <canvas id="pride-canvas" width="1024" height="640"></canvas>
-      <div id="fps">FPS: --</div>
-    </div>
+      <div id="canvas-wrap">
+        <div id="view-tabs">
+          <button class="vtab active" data-tab="layout">Layout</button>
+          <button class="vtab"        data-tab="event-sheet">Event Sheet</button>
+        </div>
+
+        <canvas id="pride-canvas" width="1024" height="640"></canvas>
+        <div id="fps">FPS: --</div>
+
+        <div id="event-sheet-view" hidden></div>
+      </div>
 
     <aside id="right-panel">
       <h3>Inspector</h3>
@@ -123,6 +130,19 @@
         </table>
       </section>
     </div>
+  </div>
+</div>
+
+<div id="picker-modal" class="modal-backdrop" hidden>
+  <div class="modal picker-modal-inner" role="dialog">
+    <header class="modal-header">
+      <h2 class="picker-title">Выбрать</h2>
+      <button class="modal-close" aria-label="Закрыть">×</button>
+    </header>
+    <div class="picker-search-wrap">
+      <input class="picker-search" type="text" placeholder="Поиск по названию или ID...">
+    </div>
+    <div class="picker-list"></div>
   </div>
 </div>
 

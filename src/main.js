@@ -21,6 +21,8 @@ import { ShortcutsModal } from './editor/shortcuts-modal.js';
 import { Inspector } from './editor/inspector.js';
 import { LayersPanel } from './editor/layers-panel.js';
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
+import { Tabs }            from './editor/tabs.js';
+import { EventSheetPanel } from './editor/event-sheet-panel.js';
 
 async function main() {
   // --- Регистрация условий/действий (один раз) ---
@@ -104,6 +106,20 @@ async function main() {
     dt,
     time:  performance.now() / 1000,
   }));
+
+    // --- Event Sheet view ---
+  const eventSheetView  = document.getElementById('event-sheet-view');
+  const eventSheetPanel = new EventSheetPanel(eventSheetView, project, eventRuntime);
+  eventSheetPanel.onChange = () => scheduleSave();
+  eventSheetPanel.refresh();
+
+  // --- View tabs (Layout / Event Sheet) ---
+  const tabs = new Tabs(document.getElementById('view-tabs'), (id) => {
+    const isLayout = id === 'layout';
+    canvas.hidden = !isLayout;
+    eventSheetView.hidden = isLayout;
+    if (!isLayout) eventSheetPanel.refresh();
+  });
 
   // --- Inspector / Layers ---
   const inspector = new Inspector(
@@ -195,6 +211,7 @@ async function main() {
     if (loadProject(project)) {
       editor.clearSelection();
       eventRuntime.setSheet(project.sheet || defaultEventSheet());
+      eventSheetPanel.setSheet(project.sheet || defaultEventSheet());
       setIndicator('saved', '✓ loaded');
       editor.onChange();
     } else {
@@ -212,6 +229,7 @@ async function main() {
     project.sheet = defaultEventSheet();
     project.vars = {};
     eventRuntime.setSheet(project.sheet);
+    eventSheetPanel.refresh();
     editor.clearSelection();
     setIndicator('dirty', '● new');
     editor.onChange();
