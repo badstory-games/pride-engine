@@ -56,6 +56,7 @@ export class EditorController {
       this.mouseScreen = s;
       this.mouseWorld = w;
 
+      // Pan доступен всегда
       if (e.button === 1 || (e.button === 0 && e.altKey)) {
         e.preventDefault();
         this.panning = true;
@@ -66,17 +67,18 @@ export class EditorController {
 
       if (e.button !== 0) return;
 
+      // Всё редактирующее — только когда редактор разблокирован
+      if (ed.locked) return;
+
       const shift = e.shiftKey;
 
       if (ed.tool === 'select') {
         const hit = pickTopmost(ed.scene, w.x, w.y);
 
         if (hit) {
-          if (shift) {
-            ed.select(hit.id, true);
-          } else if (!ed.selection.has(hit.id)) {
-            ed.select(hit.id, false);
-          }
+          if (shift) ed.select(hit.id, true);
+          else if (!ed.selection.has(hit.id)) ed.select(hit.id, false);
+
           if (ed.selection.has(hit.id)) {
             const originals = new Map();
             for (const id of ed.selection) {
@@ -193,7 +195,7 @@ export class EditorController {
 
     // ------------- KEYDOWN -------------
     window.addEventListener('keydown', (e) => {
-      // F1 / ? — справка. Работает всегда, независимо от фокуса.
+      // F1 / ? — всегда
       if (e.code === 'F1' || e.key === '?') {
         e.preventDefault();
         e.stopPropagation();
@@ -201,7 +203,6 @@ export class EditorController {
         return;
       }
 
-      // Esc при открытой справке — закрыть справку
       if (e.code === 'Escape' && this.isShortcutsOpen && this.isShortcutsOpen()) {
         e.preventDefault();
         if (this.onToggleShortcuts) this.onToggleShortcuts();
@@ -214,6 +215,7 @@ export class EditorController {
       const mod = e.ctrlKey || e.metaKey;
 
       if (e.code === 'Delete' || e.code === 'Backspace') {
+        if (ed.locked) return;
         if (ed.selection.size) {
           ed.deleteSelected();
           e.preventDefault();
@@ -231,6 +233,7 @@ export class EditorController {
       }
 
       if (mod && e.code === 'KeyA') {
+        if (ed.locked) return;
         ed.selectMany(ed.scene.objects.map((o) => o.id), false);
         e.preventDefault();
         e.stopPropagation();
@@ -238,14 +241,11 @@ export class EditorController {
       }
 
       if (mod) return;
+      if (ed.locked) return;
 
-      if (e.code === 'Digit1' || e.code === 'KeyQ') {
-        this.setTool('select');
-      } else if (e.code === 'Digit2' || e.code === 'KeyR') {
-        this.setTool('rectangle');
-      } else if (e.code === 'Digit3' || e.code === 'KeyS') {
-        this.setTool('sprite');
-      }
+      if (e.code === 'Digit1' || e.code === 'KeyQ')      this.setTool('select');
+      else if (e.code === 'Digit2' || e.code === 'KeyR') this.setTool('rectangle');
+      else if (e.code === 'Digit3' || e.code === 'KeyS') this.setTool('sprite');
     });
   }
 }

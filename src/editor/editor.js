@@ -7,6 +7,7 @@ export class Editor {
     this.box = null;
     this.pendingRect = null;
     this.hovered = null;
+    this.locked = false;   // блокировка редактирования во время Play
     this.onChange = () => {};
   }
 

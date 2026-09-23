@@ -1,3 +1,5 @@
+import { defaultPhysics } from '../engine/physics-bridge.js';
+
 export class Scene {
   constructor() {
     this.objects = [];
@@ -63,6 +65,7 @@ export class Scene {
       textureId: null,
       visible: true,
       properties: {},
+      physics: defaultPhysics(),
       ...partial,
     };
     this.objects.push(obj);
@@ -124,6 +127,7 @@ export class Scene {
       if (o.visible === undefined) o.visible = true;
       if (o.opacity === undefined) o.opacity = 1;
       if (o.rotation === undefined) o.rotation = 0;
+      if (!o.physics) o.physics = defaultPhysics();
     }
   }
 }

@@ -12,8 +12,7 @@ import { ShortcutsModal } from './editor/shortcuts-modal.js';
 import { Inspector } from './editor/inspector.js';
 import { LayersPanel } from './editor/layers-panel.js';
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
-import { World } from './engine/physics/world.js';
-import { BodyType, ShapeType } from './engine/physics/body.js';
+import { PhysicsBridge } from './engine/physics-bridge.js';
 import { drawPhysicsDebug } from './engine/physics/debug-draw.js';
 
 async function main() {
@@ -61,84 +60,15 @@ async function main() {
     assets.loadFromBitmap('player', bmp);
   }
 
-    // ============================================================
-  // Physics — 3.1 демо
-  // ============================================================
-  const physics = new World({
-    gravityX: 0,
-    gravityY: 980,
-    iterations: 8,
-    cellSize: 64,
-  });
-
-  // Земля
-  physics.createBody({
-    type: BodyType.STATIC,
-    shape: ShapeType.AABB,
-    x: 512, y: 620,
-    halfW: 400, halfH: 20,
-    friction: 0.7,
-    restitution: 0.05,
-  });
-
-  // Платформа
-  physics.createBody({
-    type: BodyType.STATIC,
-    shape: ShapeType.AABB,
-    x: 320, y: 460,
-    halfW: 120, halfH: 14,
-    friction: 0.7,
-    restitution: 0.05,
-  });
-
-  // 5 падающих квадратов
-  for (let i = 0; i < 5; i++) {
-    physics.createBody({
-      type: BodyType.DYNAMIC,
-      shape: ShapeType.AABB,
-      x: 420 + i * 42,
-      y: 100 + i * 60,
-      halfW: 20, halfH: 20,
-      density: 1,
-      restitution: 0.25,
-      friction: 0.5,
-    });
-  }
-
-  // Один шарик
-  physics.createBody({
-    type: BodyType.DYNAMIC,
-    shape: ShapeType.CIRCLE,
-    x: 720, y: 200,
-    radius: 26,
-    density: 1,
-    restitution: 0.65,
-    friction: 0.3,
-  });
-
-  // Space = создать квадрат в позиции курсора
-  window.addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' || e.ctrlKey || e.metaKey) return;
-    const tag = document.activeElement && document.activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    e.preventDefault();
-
-    const w = controller.mouseWorld;
-    physics.createBody({
-      type: BodyType.DYNAMIC,
-      shape: ShapeType.AABB,
-      x: w.x, y: w.y,
-      halfW: 20, halfH: 20,
-      density: 1,
-      restitution: 0.3,
-      friction: 0.5,
-    });
-  });
-
   // --- Сцена + Editor ---
   const scene = new Scene();
   const editor = new Editor(scene);
   const controller = new EditorController(canvas, camera, editor);
+
+  // ============================================================
+  // Physics — 3.2 Bridge
+  // ============================================================
+  const bridge = new PhysicsBridge(scene);
 
   // --- Inspector ---
   const inspector = new Inspector(
@@ -243,6 +173,59 @@ async function main() {
     editor.onChange();
   });
 
+  const btnPlay  = document.getElementById('btn-play');
+  const btnPause = document.getElementById('btn-pause');
+  const btnStop  = document.getElementById('btn-stop');
+
+  function refreshPlayButtons() {
+    btnPlay.classList.toggle('active', bridge.running && !bridge.paused);
+    btnPause.classList.toggle('active', bridge.running && bridge.paused);
+    btnStop.classList.toggle('danger', !bridge.running);
+    btnStop.disabled = !bridge.running;
+    btnPause.disabled = !bridge.running;
+  }
+
+  function doPlay() {
+    if (!bridge.running) {
+      bridge.start();
+      editor.locked = true;
+      editor.clearSelection();
+      console.log('[play] started, bodies:', bridge.bodiesCount);
+    } else if (bridge.paused) {
+      bridge.resume();
+    }
+    refreshPlayButtons();
+  }
+
+  function doPause() {
+    if (bridge.running && !bridge.paused) {
+      bridge.pause();
+    }
+    refreshPlayButtons();
+  }
+
+  function doStop() {
+    if (bridge.running) {
+      bridge.stop();
+    }
+    editor.locked = false;
+    refreshPlayButtons();
+    editor.onChange();
+  }
+
+  btnPlay.addEventListener('click', doPlay);
+  btnPause.addEventListener('click', doPause);
+  btnStop.addEventListener('click', doStop);
+
+  // F5 / F6 / F7
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'F5') { e.preventDefault(); doPlay(); }
+    else if (e.code === 'F6') { e.preventDefault(); doPause(); }
+    else if (e.code === 'F7') { e.preventDefault(); doStop(); }
+  });
+
+  refreshPlayButtons();
+
   // --- onChange: единая точка обновления UI ---
   editor.onChange = () => {
     refreshToolButtons();
@@ -275,7 +258,7 @@ async function main() {
   let lastStatus = 0;
 
   function update(dt) {
-    physics.step(dt);
+    bridge.step(dt);
   }
 
     function render() {
@@ -320,12 +303,14 @@ async function main() {
     drawOverlay(overlayBatch, editor, camera);
     overlayBatch.flush(renderPass);
 
-    // --- 4) Physics debug ---       ← внутри пасса, ДО endFrame
-    renderer.setTexture(assets.get('__white').texture);
-    renderPass.setBindGroup(0, renderer.bindGroup);
-    physicsBatch.begin();
-    drawPhysicsDebug(physicsBatch, physics, camera);
-    physicsBatch.flush(renderPass);
+    // --- 4) Physics debug (только когда идёт симуляция) ---
+    if (bridge.running) {
+      renderer.setTexture(assets.get('__white').texture);
+      renderPass.setBindGroup(0, renderer.bindGroup);
+      physicsBatch.begin();
+      drawPhysicsDebug(physicsBatch, bridge.world, camera);
+      physicsBatch.flush(renderPass);
+    }
 
     // --- Закрываем проход и сабмитим ---  ← это должно быть САМОЕ последнее
     renderer.endFrame(commandEncoder, renderPass);
@@ -341,7 +326,8 @@ async function main() {
         `Zoom: ${camera.zoom.toFixed(2)}×  |  ` +
         `Mouse: (${w.x.toFixed(0)}, ${w.y.toFixed(0)})  |  ` +
         `Selected: ${editor.selection.size} / ${scene.objects.length}  |  ` +
-        `Bodies: ${physics.bodies.count}`;
+        `Bodies: ${bridge.bodiesCount}` +
+        `  |  ${bridge.running ? (bridge.paused ? 'PAUSED' : 'PLAYING') : 'EDITING'}`
     }
   }
 

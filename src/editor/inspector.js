@@ -24,7 +24,13 @@ export class Inspector {
 
     const empty = document.createElement('div');
     empty.className = 'inspector-empty';
-    empty.textContent = 'No selection';
+    empty.innerHTML = `
+      <div class="inspector-empty-icon">▢</div>
+      <div class="inspector-empty-title">Объект не выбран</div>
+      <div class="inspector-empty-hint">
+        Выберите объект на сцене, чтобы<br>увидеть и изменить его свойства.
+      </div>
+    `;
     this.container.appendChild(empty);
     this.emptyEl = empty;
 
@@ -54,6 +60,42 @@ export class Inspector {
     visRow.innerHTML = `<label><input type="checkbox" data-prop="visible"> Visible</label>`;
     form.appendChild(visRow);
     this.fields.visible = visRow.querySelector('input');
+
+        // ----- Physics section -----
+    const physTitle = document.createElement('div');
+    physTitle.className = 'inspector-section-title';
+    physTitle.textContent = 'Physics';
+    form.appendChild(physTitle);
+
+    const enRow = document.createElement('div');
+    enRow.className = 'inspector-row inspector-row-check';
+    enRow.innerHTML = `<label><input type="checkbox" data-prop="physEnabled"> Enable physics</label>`;
+    form.appendChild(enRow);
+    this.fields.physEnabled = enRow.querySelector('input');
+
+    this._selectField(form, 'physType',   'Body type');
+    this._selectField(form, 'physShape',  'Shape');
+    this._numField   (form, 'physDensity',     'Density',     { min: 0, step: 0.1 });
+    this._numField   (form, 'physFriction',    'Friction',    { min: 0, max: 1, step: 0.05 });
+    this._numField   (form, 'physRestitution', 'Restitution', { min: 0, max: 1, step: 0.05 });
+    this._numField   (form, 'physRadius',      'Radius',      { min: 1, step: 1 });
+
+    // Заполнить опции select'ов
+    const fillSelect = (sel, values) => {
+      sel.innerHTML = '';
+      for (const v of values) {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        sel.appendChild(o);
+      }
+    };
+    fillSelect(this.fields.physType,  ['static', 'dynamic', 'kinematic']);
+    fillSelect(this.fields.physShape, ['box', 'circle']);
+
+    this._physFields = [
+      'physType', 'physShape', 'physDensity',
+      'physFriction', 'physRestitution', 'physRadius',
+    ];
   }
 
   _numField(parent, prop, label, opts = {}) {
@@ -160,6 +202,30 @@ export class Inspector {
     setVal('layerId', first.layerId);
     setVal('textureId', first.textureId || '');
     this.fields.visible.checked = first.visible;
+
+    const ph = first.physics || {};
+    const setVal2 = (prop, v) => {
+      if (prop === activeProp) return;
+      this.fields[prop].value = v;
+    };
+
+    this.fields.physEnabled.checked = !!ph.enabled;
+    setVal2('physType',        ph.type        || 'dynamic');
+    setVal2('physShape',       ph.shape       || 'box');
+    setVal2('physDensity',     ph.density     ?? 1);
+    setVal2('physFriction',    ph.friction    ?? 0.5);
+    setVal2('physRestitution', ph.restitution ?? 0.2);
+    setVal2('physRadius',      ph.radius      ?? 32);
+
+    // Показать Radius только для circle
+    const radiusRow = this.fields.physRadius.closest('.inspector-row');
+    if (radiusRow) radiusRow.style.display = (ph.shape === 'circle') ? '' : 'none';
+
+    // Блокировка физических полей, если physics выключен
+    const disabled = !ph.enabled;
+    for (const p of this._physFields) {
+      this.fields[p].disabled = disabled;
+    }
   }
 
   _onFieldChange(e) {
@@ -197,6 +263,30 @@ export class Inspector {
         case 'textureId':
           obj.textureId = value || null;
           break;
+                case 'physEnabled':
+          obj.physics = obj.physics || {};
+          obj.physics.enabled = value;
+          break;
+        case 'physType':
+          obj.physics = obj.physics || {};
+          obj.physics.type = value;
+          break;
+        case 'physShape':
+          obj.physics = obj.physics || {};
+          obj.physics.shape = value;
+          break;
+        case 'physDensity':
+        case 'physFriction':
+        case 'physRestitution':
+        case 'physRadius': {
+          const key = prop.replace('phys', '').toLowerCase();
+          const n = parseFloat(value);
+          if (Number.isFinite(n)) {
+            obj.physics = obj.physics || {};
+            obj.physics[key] = n;
+          }
+          break;
+        }
         case 'visible':
           obj.visible = value;
           break;
