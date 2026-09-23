@@ -1,42 +1,84 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Pride Engine — Stage 1</title>
-  <style>
-    body {
-      margin: 0;
-      background: #1e1e1e;
-      color: #fff;
-      font-family: system-ui, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    #pride-canvas {
-      background: #333;
-      border: 1px solid #555;
-      margin-top: 20px;
-    }
-    #fps {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      font: 14px monospace;
-      background: rgba(0, 0, 0, 0.5);
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .toolbar {
-      margin-top: 10px;
-      color: #aaa;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Pride Engine — Stage 2.1</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #1a1a1a; color: #ddd;
+               font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  #topbar {
+    height: 32px; display: flex; align-items: center; gap: 12px;
+    padding: 0 12px; background: #252525; border-bottom: 1px solid #333;
+    font-weight: 600;
+  }
+  #topbar .stage { color: #666; font-weight: 400; margin-left: auto; }
+
+  #main { flex: 1; display: flex; min-height: 0; }
+
+  aside {
+    width: 200px; background: #202020; border-right: 1px solid #333;
+    padding: 10px; overflow-y: auto;
+  }
+  aside:last-child { border-right: none; border-left: 1px solid #333; }
+  aside h3 {
+    margin: 0 0 10px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 1px; color: #888;
+  }
+  .placeholder {
+    color: #555; font-style: italic; padding: 8px;
+    border: 1px dashed #333; border-radius: 4px; text-align: center;
+  }
+
+  #canvas-wrap {
+    flex: 1; position: relative; display: flex;
+    align-items: center; justify-content: center;
+    background: #161616; overflow: hidden;
+  }
+  #pride-canvas {
+    background: #2a2a2a;
+    box-shadow: 0 0 0 1px #333;
+    display: block;
+  }
+
+  #fps {
+    position: absolute; top: 8px; left: 8px;
+    font: 12px monospace; background: rgba(0,0,0,0.6);
+    padding: 3px 7px; border-radius: 3px; color: #8c8;
+    pointer-events: none;
+  }
+
+  #status {
+    height: 24px; display: flex; align-items: center; gap: 16px;
+    padding: 0 12px; background: #252525; border-top: 1px solid #333;
+    font: 11px monospace; color: #888;
+  }
+</style>
 </head>
 <body>
-  <div id="fps">FPS: --</div>
-  <canvas id="pride-canvas" width="800" height="600"></canvas>
-  <div class="toolbar">Stage 1: Hello Pride</div>
-  <script type="module" src="./src/main.js"></script>
+<div id="app">
+  <header id="topbar">
+    <span>Pride Engine</span>
+    <span class="stage">Stage 2.1 — Scene / Camera / Grid</span>
+  </header>
+  <div id="main">
+    <aside id="left-panel">
+      <h3>Tools</h3>
+      <div class="placeholder">Select / Place<br>(Stage 2.2)</div>
+    </aside>
+    <div id="canvas-wrap">
+      <canvas id="pride-canvas" width="1024" height="640"></canvas>
+      <div id="fps">FPS: --</div>
+    </div>
+    <aside id="right-panel">
+      <h3>Inspector</h3>
+      <div class="placeholder">No selection<br>(Stage 2.3)</div>
+    </aside>
+  </div>
+  <footer id="status">Ready</footer>
+</div>
+<script type="module" src="./src/main.js"></script>
 </body>
 </html>

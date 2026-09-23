@@ -64,6 +64,51 @@ export class SpriteBatch {
     this.indexCount += 6;
   }
 
+    /**
+   * Рисует спрайт с поворотом вокруг центра.
+   * cx, cy — центр в мировых координатах.
+   */
+  drawRotated(cx, cy, w, h, rotation, u0, v0, u1, v1, r = 1, g = 1, b = 1, a = 1) {
+    if (this.vertexCount + 4 > this.maxVertices) {
+      throw new Error('SpriteBatch overflow');
+    }
+
+    const hw = w / 2;
+    const hh = h / 2;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+
+    // локальные углы: TL, TR, BR, BL
+    const lx = [-hw,  hw,  hw, -hw];
+    const ly = [-hh, -hh,  hh,  hh];
+
+    const vd = this.vertexData;
+    let offset = this.vertexCount * 8;
+
+    for (let i = 0; i < 4; i++) {
+      const wx = cx + lx[i] * cos - ly[i] * sin;
+      const wy = cy + lx[i] * sin + ly[i] * cos;
+
+      const u = (i === 0 || i === 3) ? u0 : u1;
+      const v = (i < 2) ? v0 : v1;
+
+      vd[offset++] = wx; vd[offset++] = wy;
+      vd[offset++] = u;  vd[offset++] = v;
+      vd[offset++] = r;  vd[offset++] = g;
+      vd[offset++] = b;  vd[offset++] = a;
+    }
+
+    const base = this.vertexCount;
+    const id = this.indexData;
+    let io = this.indexCount;
+
+    id[io++] = base;     id[io++] = base + 1; id[io++] = base + 2;
+    id[io++] = base;     id[io++] = base + 2; id[io++] = base + 3;
+
+    this.vertexCount += 4;
+    this.indexCount  += 6;
+  }
+
   end(renderPass) {
     if (this.indexCount === 0) return;
 
