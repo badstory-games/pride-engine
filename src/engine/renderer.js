@@ -1,0 +1,176 @@
+export class Renderer {
+  constructor() {
+    this.device = null;
+    this.context = null;
+    this.format = null;
+    this.pipeline = null;
+    this.uniformBuffer = null;
+    this.bindGroup = null;
+    this.sampler = null;
+    this.texture = null;
+    this.uniformData = new Float32Array(16);
+  }
+
+  async init(canvas) {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) throw new Error('WebGPU не поддерживается');
+
+    this.device = await adapter.requestDevice();
+    this.context = canvas.getContext('webgpu');
+    this.format = navigator.gpu.getPreferredCanvasFormat();
+
+    this.context.configure({
+      device: this.device,
+      format: this.format,
+      alphaMode: 'opaque',
+    });
+
+    this.createPipeline();
+    this.createUniforms();
+    this.createSampler();
+  }
+
+  createPipeline() {
+    const shaderModule = this.device.createShaderModule({ code: shaderCode });
+
+    this.pipeline = this.device.createRenderPipeline({
+      layout: 'auto',
+      vertex: {
+        module: shaderModule,
+        entryPoint: 'vs_main',
+        buffers: [{
+          arrayStride: 8 * 4, // 2 pos + 2 uv + 4 color = 8 float * 4 байта
+          attributes: [
+            { shaderLocation: 0, offset: 0,  format: 'float32x2' }, // position
+            { shaderLocation: 1, offset: 8,  format: 'float32x2' }, // uv
+            { shaderLocation: 2, offset: 16, format: 'float32x4' }, // color
+          ],
+        }],
+      },
+      fragment: {
+        module: shaderModule,
+        entryPoint: 'fs_main',
+        targets: [{
+          format: this.format,
+          blend: {
+            color: {
+              srcFactor: 'src-alpha',
+              dstFactor: 'one-minus-src-alpha',
+              operation: 'add',
+            },
+            alpha: {
+              srcFactor: 'one',
+              dstFactor: 'one-minus-src-alpha',
+              operation: 'add',
+            },
+          },
+        }],
+      },
+      primitive: { topology: 'triangle-list' },
+    });
+  }
+
+  createUniforms() {
+    this.uniformBuffer = this.device.createBuffer({
+      size: 64,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+  }
+
+  createSampler() {
+    this.sampler = this.device.createSampler({
+      magFilter: 'nearest',
+      minFilter: 'nearest',
+    });
+  }
+
+  updateProjection(width, height) {
+    const m = this.uniformData;
+    const l = 0, r = width, b = height, t = 0, n = 0, f = 1;
+
+    m[0] = 2 / (r - l); m[1] = 0; m[2] = 0; m[3] = 0;
+    m[4] = 0; m[5] = 2 / (t - b); m[6] = 0; m[7] = 0;
+    m[8] = 0; m[9] = 0; m[10] = 1 / (f - n); m[11] = 0;
+    m[12] = -(r + l) / (r - l);
+    m[13] = -(t + b) / (t - b);
+    m[14] = -n / (f - n);
+    m[15] = 1;
+
+    this.device.queue.writeBuffer(this.uniformBuffer, 0, m);
+  }
+
+  setTexture(texture, sampler) {
+    this.texture = texture;
+    this.sampler = sampler || this.sampler;
+
+    this.bindGroup = this.device.createBindGroup({
+      layout: this.pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.uniformBuffer } },
+        { binding: 1, resource: this.sampler },
+        { binding: 2, resource: this.texture.createView() },
+      ],
+    });
+  }
+
+  beginFrame() {
+    const commandEncoder = this.device.createCommandEncoder();
+    const textureView = this.context.getCurrentTexture().createView();
+
+    const renderPass = commandEncoder.beginRenderPass({
+      colorAttachments: [{
+        view: textureView,
+        clearValue: { r: 0.2, g: 0.2, b: 0.2, a: 1.0 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      }],
+    });
+
+    renderPass.setPipeline(this.pipeline);
+    if (this.bindGroup) renderPass.setBindGroup(0, this.bindGroup);
+
+    return { commandEncoder, renderPass };
+  }
+
+  endFrame(commandEncoder, renderPass) {
+    renderPass.end();
+    this.device.queue.submit([commandEncoder.finish()]);
+  }
+}
+
+const shaderCode = `
+struct Uniforms {
+  projection: mat4x4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var texSampler: sampler;
+@group(0) @binding(2) var tex: texture_2d<f32>;
+
+struct VertexInput {
+  @location(0) position: vec2<f32>,
+  @location(1) uv: vec2<f32>,
+  @location(2) color: vec4<f32>,
+};
+
+struct VertexOutput {
+  @builtin(position) position: vec4<f32>,
+  @location(0) uv: vec2<f32>,
+  @location(1) color: vec4<f32>,
+};
+
+@vertex
+fn vs_main(input: VertexInput) -> VertexOutput {
+  var output: VertexOutput;
+  output.position = uniforms.projection * vec4<f32>(input.position, 0.0, 1.0);
+  output.uv = input.uv;
+  output.color = input.color;
+  return output;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+  let texColor = textureSample(tex, texSampler, input.uv);
+  return texColor * input.color;
+}
+`;
