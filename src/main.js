@@ -12,6 +12,9 @@ import { ShortcutsModal } from './editor/shortcuts-modal.js';
 import { Inspector } from './editor/inspector.js';
 import { LayersPanel } from './editor/layers-panel.js';
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
+import { World } from './engine/physics/world.js';
+import { BodyType, ShapeType } from './engine/physics/body.js';
+import { drawPhysicsDebug } from './engine/physics/debug-draw.js';
 
 async function main() {
   const canvas = document.getElementById('pride-canvas');
@@ -57,6 +60,80 @@ async function main() {
     const bmp = await createImageBitmap(img);
     assets.loadFromBitmap('player', bmp);
   }
+
+    // ============================================================
+  // Physics — 3.1 демо
+  // ============================================================
+  const physics = new World({
+    gravityX: 0,
+    gravityY: 980,
+    iterations: 8,
+    cellSize: 64,
+  });
+
+  // Земля
+  physics.createBody({
+    type: BodyType.STATIC,
+    shape: ShapeType.AABB,
+    x: 512, y: 620,
+    halfW: 400, halfH: 20,
+    friction: 0.7,
+    restitution: 0.05,
+  });
+
+  // Платформа
+  physics.createBody({
+    type: BodyType.STATIC,
+    shape: ShapeType.AABB,
+    x: 320, y: 460,
+    halfW: 120, halfH: 14,
+    friction: 0.7,
+    restitution: 0.05,
+  });
+
+  // 5 падающих квадратов
+  for (let i = 0; i < 5; i++) {
+    physics.createBody({
+      type: BodyType.DYNAMIC,
+      shape: ShapeType.AABB,
+      x: 420 + i * 42,
+      y: 100 + i * 60,
+      halfW: 20, halfH: 20,
+      density: 1,
+      restitution: 0.25,
+      friction: 0.5,
+    });
+  }
+
+  // Один шарик
+  physics.createBody({
+    type: BodyType.DYNAMIC,
+    shape: ShapeType.CIRCLE,
+    x: 720, y: 200,
+    radius: 26,
+    density: 1,
+    restitution: 0.65,
+    friction: 0.3,
+  });
+
+  // Space = создать квадрат в позиции курсора
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || e.ctrlKey || e.metaKey) return;
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
+
+    const w = controller.mouseWorld;
+    physics.createBody({
+      type: BodyType.DYNAMIC,
+      shape: ShapeType.AABB,
+      x: w.x, y: w.y,
+      halfW: 20, halfH: 20,
+      density: 1,
+      restitution: 0.3,
+      friction: 0.5,
+    });
+  });
 
   // --- Сцена + Editor ---
   const scene = new Scene();
@@ -183,6 +260,7 @@ async function main() {
   const gridBatch    = new SpriteBatch(renderer.device, renderer.format);
   const spriteBatch  = new SpriteBatch(renderer.device, renderer.format);
   const overlayBatch = new SpriteBatch(renderer.device, renderer.format);
+  const physicsBatch = new SpriteBatch(renderer.device, renderer.format);
 
   const spriteBatches = new Map();  // textureId → SpriteBatch
   function getSpriteBatch(texId) {
@@ -196,9 +274,11 @@ async function main() {
 
   let lastStatus = 0;
 
-  function update(_dt) {}
+  function update(dt) {
+    physics.step(dt);
+  }
 
-  function render() {
+    function render() {
     camera.writeMatrix(renderer.uniformData, canvas.width, canvas.height);
     renderer.device.queue.writeBuffer(renderer.uniformBuffer, 0, renderer.uniformData);
 
@@ -209,15 +289,15 @@ async function main() {
     renderPass.setBindGroup(0, renderer.bindGroup);
     gridBatch.begin();
     drawGrid(gridBatch, camera, canvas.width, canvas.height, 32);
-    gridBatch.flush(renderPass);   // одна текстура, binder не нужен
+    gridBatch.flush(renderPass);
 
-    // --- 2) Спрайты: группы по textureId в одном буфере ---
+    // --- 2) Спрайты (группы по textureId) ---
     spriteBatch.begin();
     for (const obj of scene.getSortedByLayer()) {
       const asset = obj.textureId && assets.get(obj.textureId);
       if (!asset) continue;
 
-      spriteBatch.beginGroup(obj.textureId);   // склеит подряд идущие с той же текстурой
+      spriteBatch.beginGroup(obj.textureId);
       const cx = obj.x + obj.width  / 2;
       const cy = obj.y + obj.height / 2;
       spriteBatch.drawRotated(
@@ -233,13 +313,21 @@ async function main() {
       renderPass.setBindGroup(0, renderer.bindGroup);
     });
 
-    // --- 3) Оверлей ---
+    // --- 3) Оверлей (selection, hover, box) ---
     renderer.setTexture(assets.get('__white').texture);
     renderPass.setBindGroup(0, renderer.bindGroup);
     overlayBatch.begin();
     drawOverlay(overlayBatch, editor, camera);
     overlayBatch.flush(renderPass);
 
+    // --- 4) Physics debug ---       ← внутри пасса, ДО endFrame
+    renderer.setTexture(assets.get('__white').texture);
+    renderPass.setBindGroup(0, renderer.bindGroup);
+    physicsBatch.begin();
+    drawPhysicsDebug(physicsBatch, physics, camera);
+    physicsBatch.flush(renderPass);
+
+    // --- Закрываем проход и сабмитим ---  ← это должно быть САМОЕ последнее
     renderer.endFrame(commandEncoder, renderPass);
 
     // --- Статус-бар ---
@@ -252,7 +340,8 @@ async function main() {
         `Camera: (${camera.x.toFixed(0)}, ${camera.y.toFixed(0)})  |  ` +
         `Zoom: ${camera.zoom.toFixed(2)}×  |  ` +
         `Mouse: (${w.x.toFixed(0)}, ${w.y.toFixed(0)})  |  ` +
-        `Selected: ${editor.selection.size} / ${scene.objects.length}`;
+        `Selected: ${editor.selection.size} / ${scene.objects.length}  |  ` +
+        `Bodies: ${physics.bodies.count}`;
     }
   }
 
