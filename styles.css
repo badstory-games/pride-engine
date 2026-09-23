@@ -123,6 +123,11 @@ html, body {
   cursor: default;
   background: #242424;
 }
+.playbtn.toggled {
+  background: #6b5a2d;
+  border-color: #a8924a;
+  color: #fff;
+}
 
 /* ============================================================
    MAIN LAYOUT (3 колонки)

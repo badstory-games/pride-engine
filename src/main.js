@@ -226,6 +226,19 @@ async function main() {
 
   refreshPlayButtons();
 
+    // --- Debug toggle ---
+  const btnDebug = document.getElementById('btn-debug');
+  let debugDraw = true;
+
+  function refreshDebugBtn() {
+    btnDebug.classList.toggle('toggled', debugDraw);
+  }
+  btnDebug.addEventListener('click', () => {
+    debugDraw = !debugDraw;
+    refreshDebugBtn();
+  });
+  refreshDebugBtn();
+
   // --- onChange: единая точка обновления UI ---
   editor.onChange = () => {
     refreshToolButtons();
@@ -304,7 +317,7 @@ async function main() {
     overlayBatch.flush(renderPass);
 
     // --- 4) Physics debug (только когда идёт симуляция) ---
-    if (bridge.running) {
+    if (bridge.running && debugDraw) {
       renderer.setTexture(assets.get('__white').texture);
       renderPass.setBindGroup(0, renderer.bindGroup);
       physicsBatch.begin();
