@@ -43,9 +43,9 @@ export function registerConditions() {
     category: 'System',
     params: [
       { id: 'name',  type: 'varname', label: 'Name',  default: 'score' },
-      { id: 'op',    type: 'select', label: 'Op',     default: '==',
+      { id: 'op',    type: 'select',  label: 'Op',    default: '==',
         options: ['==', '!=', '<', '<=', '>', '>='] },
-      { id: 'value', type: 'number', label: 'Value',  default: 0 },
+      { id: 'value', type: 'number',  label: 'Value', default: 0 },
     ],
     compile: ({ name, op, value }) => (ctx) => {
       const v = ctx.vars[name] ?? 0;
@@ -62,9 +62,10 @@ export function registerConditions() {
   });
 
   /**
-   * Срабатывает в каждом тике, когда между телами A и B есть хотя бы один контакт.
-   * Порядок (A,B) не важен: проверяются обе ориентации манифолда.
-   * Оба target могут быть '*' — тогда сработает при первом же контакте двух динамических тел.
+   * Срабатывает ОДИН РАЗ при появлении новой пары контактов.
+   * Пока тела касаются — повторно не сработает.
+   * Разошлись и снова коснулись → сработает снова.
+   * Порядок (A,B) не важен.
    */
   registry.conditions.register('OnCollision', {
     label: 'On collision',
@@ -74,7 +75,7 @@ export function registerConditions() {
       { id: 'b', type: 'target', label: 'B', default: '*' },
     ],
     compile: ({ a, b }) => (ctx) => {
-      const cols = ctx.world.collisions;
+      const cols = ctx.world.newCollisions;
       for (let i = 0; i < cols.length; i++) {
         const m = cols[i];
         if (bodyMatchesAny(ctx, m.a, a) && bodyMatchesAny(ctx, m.b, b)) return true;

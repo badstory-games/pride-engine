@@ -233,16 +233,7 @@ export class EventSheetPanel {
       return `<label class="es-param"><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
-    if (def.type === 'varname') {
-      const names = Object.keys(this.project.vars || {});
-      const inList = names.includes(val);
-      const opts = names.map((n) =>
-        `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
-      const extra = inList ? '' :
-        `<option value="${val}" selected>${val} (нет)</option>`;
-      return `<label class="es-param"><span>${def.label}</span>
-        <select data-param="${key}">${extra}${opts}</select></label>`;
-    }
+    
     return `<span class="es-param-unknown">?</span>`;
   }
 
@@ -425,8 +416,12 @@ export class EventSheetPanel {
     if (!from || !to) return;
     if (from.arr !== to.arr) return;
 
+    // ВАЖНО: сохраняем ссылку на целевое событие ДО splice.
+    // Иначе to.idx после удаления указывает уже на другой элемент.
+    const target = to.arr[to.idx];
+
     const [ev] = from.arr.splice(from.idx, 1);
-    const newTo = from.arr.indexOf(to.arr[to.idx]);
+    const newTo = from.arr.indexOf(target);
     from.arr.splice(newTo >= 0 ? newTo : to.idx, 0, ev);
 
     this._recompile();

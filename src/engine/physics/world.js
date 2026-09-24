@@ -14,17 +14,33 @@ export class World {
     this.iterations = opts.iterations ?? 8;
     this.linearDamping = opts.linearDamping ?? 0.999;
 
+    /**
+     * Сколько тиков пара считается "той же самой" после потери контакта.
+     * 8 тиков ≈ 133 мс при 60 Hz. Достаточно, чтобы пережить jitter, но
+     * не настолько много, чтобы пропустить быстрый отскок-приземление.
+     */
+    this.contactGrace = opts.contactGrace ?? 20;
+
     this.bodies = new BodyStore(opts.capacity ?? 2048);
     this.broadphase = new SpatialHash(opts.cellSize ?? 64);
 
-    /** Активные манифолды текущего шага (переиспользуются из пула). */
+    /** Все контакты текущего шага. */
     this.collisions = [];
 
-    /** Опциональный callback: (bodyA, bodyB, manifold) => void. */
+    /** Только по-настоящему новые пары (для OnCollision). */
+    this.newCollisions = [];
+
     this.onCollision = null;
 
     this._manifoldPool = [];
     this._manifoldCount = 0;
+
+    /**
+     * key пары → тик, когда её видели в последний раз.
+     * Позволяет не считать повторным контакт, если он мигнул на 1-2 тика.
+     */
+    this._pairLastSeen = new Map();
+    this._tickCounter  = 0;
   }
 
   createBody(desc) {
@@ -35,7 +51,10 @@ export class World {
     this.bodies.clear();
     this.broadphase.clear();
     this.collisions.length = 0;
+    this.newCollisions.length = 0;
     this._manifoldCount = 0;
+    this._pairLastSeen.clear();
+    this._tickCounter = 0;
   }
 
   _acquireManifold() {
@@ -55,6 +74,8 @@ export class World {
   step(dt) {
     const store = this.bodies;
     const n = store.count;
+
+    this._tickCounter++;
 
     // --- 1) Integrate velocities ---
     const gx = this.gravityX * dt;
@@ -101,6 +122,33 @@ export class World {
       }
     }
 
+    // --- 3b) Edge-детект с grace period ---
+    this.newCollisions.length = 0;
+    const tick = this._tickCounter;
+    const grace = this.contactGrace;
+
+    for (let i = 0; i < this.collisions.length; i++) {
+      const m = this.collisions[i];
+      const lo = m.a < m.b ? m.a : m.b;
+      const hi = m.a < m.b ? m.b : m.a;
+      const key = lo * 0x100000 + hi;
+
+      const last = this._pairLastSeen.get(key);
+      // Новая пара — если её не видели последние `grace` тиков
+      if (last === undefined || (tick - last) > grace) {
+        this.newCollisions.push(m);
+      }
+      this._pairLastSeen.set(key, tick);
+    }
+
+    // Периодическая чистка старых записей (не каждый тик)
+    if ((tick & 63) === 0) {
+      const cutoff = tick - grace * 4;
+      for (const [k, t] of this._pairLastSeen) {
+        if (t < cutoff) this._pairLastSeen.delete(k);
+      }
+    }
+
     // --- 4) Solver ---
     solveWorld(this);
 
@@ -113,8 +161,8 @@ export class World {
 
     // --- 6) Callbacks ---
     if (this.onCollision) {
-      for (let i = 0; i < this.collisions.length; i++) {
-        const m = this.collisions[i];
+      for (let i = 0; i < this.newCollisions.length; i++) {
+        const m = this.newCollisions[i];
         this.onCollision(m.a, m.b, m);
       }
     }
@@ -134,14 +182,11 @@ export class World {
     }
 
     if (sa === ShapeType.CIRCLE && sb === ShapeType.AABB) {
-      // circle=a, box=b — нормаль от круга к боксу
       return collideCirclevsAABB(store, a, b, out);
     }
 
     if (sa === ShapeType.AABB && sb === ShapeType.CIRCLE) {
-      // circle=b, box=a — считаем как (circle, box), потом разворачиваем
       if (!collideCirclevsAABB(store, b, a, out)) return false;
-      // out.a = b(circle), out.b = a(box) — переставляем и разворачиваем нормаль
       out.a = a;
       out.b = b;
       out.nx = -out.nx;

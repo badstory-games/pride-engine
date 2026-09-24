@@ -31,8 +31,10 @@ export class PhysicsBridge {
 
     this.running = false;
     this.paused = false;
-    this.snapshot = null;       // сцена (позиции, opacity, visible)
-    this.snapshot = null;   // глобальные переменные
+
+    /** Снимок сцены для отката при Stop (позиции, rotation, opacity, visible). */
+    this.snapshot = null;
+
     /** @type {{bodyIndex:number, objectId:number}[]} */
     this.mapping = [];
   }

@@ -84,20 +84,8 @@ export class Renderer {
     });
   }
 
-  updateProjection(width, height) {
-    const m = this.uniformData;
-    const l = 0, r = width, b = height, t = 0, n = 0, f = 1;
-
-    m[0] = 2 / (r - l); m[1] = 0; m[2] = 0; m[3] = 0;
-    m[4] = 0; m[5] = 2 / (t - b); m[6] = 0; m[7] = 0;
-    m[8] = 0; m[9] = 0; m[10] = 1 / (f - n); m[11] = 0;
-    m[12] = -(r + l) / (r - l);
-    m[13] = -(t + b) / (t - b);
-    m[14] = -n / (f - n);
-    m[15] = 1;
-
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, m);
-  }
+  // Матрица проекции пишется извне через camera.writeMatrix(m, W, H),
+  // затем вызывающий код сам делает writeBuffer. Renderer её не трогает.
 
   setTexture(texture, sampler) {
     this.texture = texture;

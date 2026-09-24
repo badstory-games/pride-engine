@@ -1,11 +1,8 @@
-const SLOP = 0.5;        // допуск проникновения (px)
-const PERCENT = 0.2;     // доля коррекции за шаг
-const VEL_THRESHOLD = 1; // ниже этой скорости restitution игнорируется
+const SLOP = 0.5;         // допуск проникновения (px)
+const PERCENT = 0.2;      // доля коррекции за шаг
+const VEL_THRESHOLD = 40;  // было 1 — ниже этой скорости restitution = 0
+const RESTING_DAMP = 0.5; // гасим разделяющую скорость ниже порога
 
-/**
- * Sequential impulses.
- * Вызывается один раз на шаг физики — сам итерирует по контактам N раз.
- */
 export function solveWorld(world) {
   const store = world.bodies;
   const collisions = world.collisions;
@@ -13,14 +10,12 @@ export function solveWorld(world) {
 
   if (collisions.length === 0) return;
 
-  // Velocity phase
   for (let it = 0; it < iterations; it++) {
     for (let i = 0; i < collisions.length; i++) {
       solveVelocity(store, collisions[i]);
     }
   }
 
-  // Position phase
   for (let i = 0; i < collisions.length; i++) {
     correctPosition(store, collisions[i]);
   }
@@ -35,18 +30,26 @@ function solveVelocity(store, m) {
   const invMassSum = invMassA + invMassB;
   if (invMassSum === 0) return;
 
-  // Relative velocity along normal
   const rvx = store.vx[b] - store.vx[a];
   const rvy = store.vy[b] - store.vy[a];
   const vn = rvx * nx + rvy * ny;
 
-  if (vn > 0) return;  // разлетаются
+  // --- Разлетаются ---
+  if (vn > 0) {
+    // Мелкая разделяющая скорость — гасим, чтобы не было "звона"
+    if (vn < VEL_THRESHOLD) {
+      const jn = -vn * RESTING_DAMP / invMassSum;
+      store.vx[a] -= jn * nx * invMassA;
+      store.vy[a] -= jn * ny * invMassA;
+      store.vx[b] += jn * nx * invMassB;
+      store.vy[b] += jn * ny * invMassB;
+    }
+    return;
+  }
 
-  // Restitution (только если скорость достаточно велика)
   let e = Math.min(store.restitution[a], store.restitution[b]);
   if (Math.abs(vn) < VEL_THRESHOLD) e = 0;
 
-  // Нормальный импульс
   const jn = -(1 + e) * vn / invMassSum;
 
   store.vx[a] -= jn * nx * invMassA;
@@ -54,7 +57,7 @@ function solveVelocity(store, m) {
   store.vx[b] += jn * nx * invMassB;
   store.vy[b] += jn * ny * invMassB;
 
-  // Friction (tangent = perpendicular to normal)
+  // Трение
   const tx = -ny;
   const ty =  nx;
 
@@ -63,9 +66,8 @@ function solveVelocity(store, m) {
   const vt  = vtx * tx + vty * ty;
 
   const jt = -vt / invMassSum;
-
   const mu = Math.sqrt(store.friction[a] * store.friction[b]);
-  const maxFriction = jn * mu;
+  const maxFriction = Math.abs(jn) * mu;
   const jtClamped = jt < -maxFriction ? -maxFriction
                   : jt >  maxFriction ?  maxFriction
                   : jt;

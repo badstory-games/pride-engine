@@ -350,11 +350,12 @@ async function main() {
   });
 
   window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
     if (e.code === 'F5')      { e.preventDefault(); doPlay();  }
     else if (e.code === 'F6') { e.preventDefault(); doPause(); }
     else if (e.code === 'F7') { e.preventDefault(); doStop();  }
   });
-
+  
   refreshPlayButtons();
 
   // --- onChange: единая точка обновления UI ---

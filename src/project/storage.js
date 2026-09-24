@@ -1,16 +1,5 @@
 const KEY = 'pride.project.v1';
 
-function migrate(raw) {
-  const data = JSON.parse(raw);
-  if (data && data.version === 2) {
-    if (!data.vars) data.vars = {};
-    if (!data.varsInitial) data.varsInitial = { ...data.vars };
-    return data;
-  }
-  // v1: поля scene на верхнем уровне
-  return { version: 2, scene: data, sheet: null, vars: {}, varsInitial: {} };
-}
-
 /**
  * project = {
  *   scene: Scene,
@@ -43,14 +32,16 @@ export function loadProject(project) {
     const data = JSON.parse(raw);
 
     // --- миграции ---
+    // v1: сцена на верхнем уровне; полей vars/varsInitial нет.
+    // v2: есть vars/varsInitial, но нет scene (тоже кладём сцену наверх).
+    // v3: текущий формат — { scene, sheet, vars, varsInitial }.
     let sceneData   = data.scene;
     let sheetData   = data.sheet;
     let varsData    = data.vars;
     let initialData = data.varsInitial;
 
-    // v1: сцена на верхнем уровне
-    if (sceneData === undefined) sceneData = data;
-    if (varsData === undefined) varsData = {};
+    if (sceneData === undefined) sceneData = data;   // v1
+    if (varsData  === undefined) varsData = {};      // v1 / v2
     if (initialData === undefined) initialData = { ...varsData };
 
     project.scene.fromJSON(sceneData);

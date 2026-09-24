@@ -33,7 +33,9 @@ export class EventPopover {
     this.el.addEventListener('keydown', (e) => {
       if (e.code === 'Escape') { e.preventDefault(); this.close(); }
       if (e.code === 'Enter') {
-        const item = this.el.querySelector('.es-pop-item:not([style*="display: none"])');
+        // Первый видимый (не hidden через style.display) элемент.
+        const item = [...this.el.querySelectorAll('.es-pop-item')]
+          .find((el) => el.style.display !== 'none');
         if (item) {
           e.preventDefault();
           const cb = this._onSelect;
@@ -80,7 +82,6 @@ export class EventPopover {
   _filter(q) {
     q = q.trim().toLowerCase();
 
-    // Скрываем/показываем элементы
     for (const item of this.el.querySelectorAll('.es-pop-item')) {
       const text = item.textContent.toLowerCase();
       const type = item.dataset.type.toLowerCase();
@@ -88,7 +89,6 @@ export class EventPopover {
       item.style.display = match ? '' : 'none';
     }
 
-    // Скрываем пустые категории
     for (const cat of this.el.querySelectorAll('.es-pop-cat')) {
       let next = cat.nextElementSibling;
       let hasVisible = false;

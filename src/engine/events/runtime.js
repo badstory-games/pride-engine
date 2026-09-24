@@ -10,7 +10,6 @@ export class EventRuntime {
 
   setSheet(sheet) {
     this.sheet = sheet;
-    this.program.length = 0;
     this.compile();
   }
 
@@ -69,13 +68,16 @@ export class EventRuntime {
   _run(node, ctx) {
     if (node.disabled) return;
 
+    // --- 1) Оцениваем ВСЕ non-once условия ---
     let pass = true;
     for (let i = 0; i < node.conditions.length; i++) {
       const c = node.conditions[i];
-      if (c.once && node._once[i]) { pass = false; break; }
-      if (!c.fn(ctx))               { pass = false; break; }
+      if (c.once) continue;
+      if (!c.fn(ctx)) { pass = false; break; }
     }
 
+    // --- 2) Любое non-once условие ложно → сбрасываем once-флаги.
+    //         Только в этот момент TriggerOnce "взводится" заново.
     if (!pass) {
       for (let i = 0; i < node.conditions.length; i++) {
         if (node.conditions[i].once) node._once[i] = false;
@@ -83,6 +85,13 @@ export class EventRuntime {
       return;
     }
 
+    // --- 3) Все non-once условия истинны. Если хоть один once уже
+    //         сработал — выходим БЕЗ сброса (иначе сработаем через кадр).
+    for (let i = 0; i < node.conditions.length; i++) {
+      if (node.conditions[i].once && node._once[i]) return;
+    }
+
+    // --- 4) Срабатываем, взводим once-флаги ---
     for (let i = 0; i < node.conditions.length; i++) {
       if (node.conditions[i].once) node._once[i] = true;
     }
