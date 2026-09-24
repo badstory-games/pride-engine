@@ -26,6 +26,7 @@ import { EventSheetPanel } from './editor/event-sheet-panel.js';
 import { EventPalette }     from './editor/event-palette.js';
 import { VarsPanel } from './editor/vars-panel.js';
 import { History } from './editor/history.js';
+import { Clipboard } from './editor/clipboard.js';
 import { PerfOverlay } from './editor/perf-overlay.js';
 import { runBenchmark, formatResults } from './editor/benchmark.js';
 
@@ -92,6 +93,7 @@ async function main() {
   const editor  = new Editor(scene);
   const controller = new EditorController(canvas, camera, editor);
   const bridge  = new PhysicsBridge(scene);
+  const clipboard = new Clipboard();
 
   const perfOverlay = new PerfOverlay(document.getElementById('canvas-wrap'));
 
@@ -588,6 +590,29 @@ async function main() {
       e.preventDefault();
       history.redo();
       return;
+    }
+
+    if (mod && !inField) {
+      if (e.code === 'KeyC') {
+        e.preventDefault();
+        clipboard.copy(editor, scene);
+        return;
+      }
+      if (e.code === 'KeyX') {
+        e.preventDefault();
+        clipboard.cut(editor, scene);
+        return;
+      }
+      if (e.code === 'KeyV') {
+        e.preventDefault();
+        clipboard.paste(editor, scene);
+        return;
+      }
+      if (e.code === 'KeyD') {
+        e.preventDefault();
+        clipboard.duplicate(editor, scene);
+        return;
+      }
     }
 
     if (mod && e.code === 'KeyS') { e.preventDefault(); doSavePride();  return; }
