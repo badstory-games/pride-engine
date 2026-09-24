@@ -1,25 +1,77 @@
 export class SpriteBatch {
   constructor(device, format, maxVertices = 100_000) {
     this.device = device;
-    this.maxVertices = maxVertices;
-    this.maxIndices = (maxVertices / 4) * 6;
+    this.format = format;
 
-    this.vertexData = new Float32Array(maxVertices * 8);
-    this.indexData = new Uint32Array(this.maxIndices);
+    this.vertexData = null;
+    this.indexData  = null;
+    this.vertexBuffer = null;
+    this.indexBuffer  = null;
 
     this.vertexCount = 0;
-    this.indexCount = 0;
+    this.indexCount  = 0;
 
     /** Группы в текущем кадре: { textureId, vertexOffset, indexOffset, indexCount }. */
     this.groups = [];
     this._currentGroup = null;
 
-    this.vertexBuffer = device.createBuffer({
+    this._alloc(maxVertices);
+  }
+
+  /**
+   * Выделяет CPU-буферы и GPU-буферы под заданную ёмкость.
+   * Вызывается из конструктора и из _grow().
+   */
+  _alloc(maxVertices) {
+    this.maxVertices = maxVertices;
+    this.maxIndices  = (maxVertices / 4) * 6;
+
+    this.vertexData = new Float32Array(maxVertices * 8);
+    this.indexData  = new Uint32Array(this.maxIndices);
+
+    // Уничтожаем старые GPU-буферы, если были.
+    if (this.vertexBuffer) this.vertexBuffer.destroy();
+    if (this.indexBuffer)  this.indexBuffer.destroy();
+
+    this.vertexBuffer = this.device.createBuffer({
       size: this.vertexData.byteLength,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
+    this.indexBuffer = this.device.createBuffer({
+      size: this.indexData.byteLength,
+      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+    });
+  }
 
-    this.indexBuffer = device.createBuffer({
+  /**
+   * Удваивает ёмкость. CPU-данные копируются, GPU-буферы пересоздаются.
+   * Вызывается из draw() при переполнении — до flush, поэтому
+   * старые буферы ещё не использовались renderPass'ом и безопасны
+   * для destroy().
+   */
+  _grow() {
+    const newCap = this.maxVertices * 2;
+    const oldVertexData = this.vertexData;
+    const oldIndexData  = this.indexData;
+
+    this.maxVertices = newCap;
+    this.maxIndices  = (newCap / 4) * 6;
+
+    this.vertexData = new Float32Array(newCap * 8);
+    this.indexData  = new Uint32Array(this.maxIndices);
+
+    this.vertexData.set(oldVertexData);
+    this.indexData.set(oldIndexData);
+
+    // Пересоздаём GPU-буферы.
+    this.vertexBuffer.destroy();
+    this.indexBuffer.destroy();
+
+    this.vertexBuffer = this.device.createBuffer({
+      size: this.vertexData.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    this.indexBuffer = this.device.createBuffer({
       size: this.indexData.byteLength,
       usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
     });
@@ -56,9 +108,7 @@ export class SpriteBatch {
   }
 
   draw(x, y, w, h, u0, v0, u1, v1, r = 1, g = 1, b = 1, a = 1) {
-    if (this.vertexCount + 4 > this.maxVertices) {
-      throw new Error('SpriteBatch overflow');
-    }
+    if (this.vertexCount + 4 > this.maxVertices) this._grow();
 
     const vd = this.vertexData;
     let offset = this.vertexCount * 8;
@@ -91,9 +141,7 @@ export class SpriteBatch {
   }
 
   drawRotated(cx, cy, w, h, rotation, u0, v0, u1, v1, r = 1, g = 1, b = 1, a = 1) {
-    if (this.vertexCount + 4 > this.maxVertices) {
-      throw new Error('SpriteBatch overflow');
-    }
+    if (this.vertexCount + 4 > this.maxVertices) this._grow();
 
     const hw = w / 2;
     const hh = h / 2;

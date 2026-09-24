@@ -1,17 +1,6 @@
 /**
  * Плавающий оверлей производительности.
  * Домен — редактор, в экспорт не попадает.
- *
- * Использование:
- *   const perf = new PerfOverlay(containerEl);
- *   // в update():
- *   perf.beginUpdate(); ... ; perf.endUpdate();
- *   // в render():
- *   perf.beginRender(); ... ; perf.endRender();
- *   perf.set({ drawCalls, vertices, objects, bodies, collisions });
- *   // раз в кадр — начало кадра и обновление UI:
- *   perf.beginFrame();
- *   perf.tick();
  */
 export class PerfOverlay {
   constructor(container) {
@@ -31,7 +20,6 @@ export class PerfOverlay {
     this._frameMs  = 0;
     this._updateMs = 0;
     this._renderMs = 0;
-    this._frameStart  = 0;
     this._updateStart = 0;
     this._renderStart = 0;
 
@@ -40,11 +28,12 @@ export class PerfOverlay {
       objects: 0, bodies: 0, collisions: 0,
     };
 
-    // Роллинг-окно frame time для стабильного FPS.
     this._samples = new Float32Array(60);
     this._sampleIdx = 0;
     this._sampleLen = 0;
     this._lastUiUpdate = 0;
+
+    this._lastTickTime = 0;
   }
 
   _buildRows(labels) {
@@ -69,29 +58,42 @@ export class PerfOverlay {
 
   // ---- тайминги ----
 
-  beginFrame()  { this._frameStart  = performance.now(); }
   beginUpdate() { this._updateStart = performance.now(); }
   endUpdate()   { this._updateMs = performance.now() - this._updateStart; }
   beginRender() { this._renderStart = performance.now(); }
   endRender()   { this._renderMs = performance.now() - this._renderStart; }
+
+  // ---- публичные getters ----
+
+  get updateMs() { return this._updateMs; }
+  get renderMs() { return this._renderMs; }
+  get frameMs()  { return this._frameMs; }
+  get extras()   { return this._extras; }
 
   /** Дополнительные счётчики (draw calls, vertex count и т.д.). */
   set(extras) {
     Object.assign(this._extras, extras);
   }
 
-  /** Вызывается в конце кадра — обновляет FPS и, раз в 200 мс, UI. */
+  /**
+   * Вызывается в конце кадра. Frame time = разница между двумя tick().
+   * UI обновляется раз в 200 мс.
+   */
   tick() {
     const now = performance.now();
-    this._frameMs = now - this._frameStart;
 
-    this._samples[this._sampleIdx] = this._frameMs;
-    this._sampleIdx = (this._sampleIdx + 1) % this._samples.length;
-    if (this._sampleLen < this._samples.length) this._sampleLen++;
+    if (this._lastTickTime > 0) {
+      this._frameMs = now - this._lastTickTime;
+
+      this._samples[this._sampleIdx] = this._frameMs;
+      this._sampleIdx = (this._sampleIdx + 1) % this._samples.length;
+      if (this._sampleLen < this._samples.length) this._sampleLen++;
+    }
+    this._lastTickTime = now;
 
     if (now - this._lastUiUpdate >= 200) {
       this._lastUiUpdate = now;
-      this._renderUi(now);
+      this._renderUi();
     }
   }
 

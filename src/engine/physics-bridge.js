@@ -32,7 +32,12 @@ export class PhysicsBridge {
     /** Снимок сцены для отката при Stop (позиции, rotation, opacity, visible). */
     this.snapshot = null;
 
-    /** @type {{bodyIndex:number, objectId:number}[]} */
+    /**
+     * Тело ↔ объект сцены.
+     * obj — прямая ссылка, чтобы sync() не звал scene.get() (он O(n))
+     * и не превращал синхронизацию в O(n²).
+     * @type {{bodyIndex:number, objectId:number, obj:object}[]}
+     */
     this.mapping = [];
   }
 
@@ -84,7 +89,7 @@ export class PhysicsBridge {
         userId: obj.id,
       });
 
-      this.mapping.push({ bodyIndex: idx, objectId: obj.id });
+      this.mapping.push({ bodyIndex: idx, objectId: obj.id, obj });
     }
 
     this.running = true;
@@ -126,12 +131,11 @@ export class PhysicsBridge {
   sync() {
     if (!this.running) return;
     const store = this.world.bodies;
+    const m = this.mapping;
 
-    for (let i = 0; i < this.mapping.length; i++) {
-      const { bodyIndex, objectId } = this.mapping[i];
-      const obj = this.scene.get(objectId);
-      if (!obj) continue;
-
+    for (let i = 0; i < m.length; i++) {
+      const bodyIndex = m[i].bodyIndex;
+      const obj = m[i].obj;
       obj.x = store.x[bodyIndex] - obj.width  / 2;
       obj.y = store.y[bodyIndex] - obj.height / 2;
     }

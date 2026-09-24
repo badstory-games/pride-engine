@@ -12,7 +12,10 @@ export const BodyType = {
 /**
  * Structure-of-Arrays хранилище тел.
  * Все поля — в типизированных массивах, hot path не аллоцирует.
- * Вместимость фиксирована; при переполнении — исключение (можно расширить, но не сейчас).
+ *
+ * Ёмкость растёт удвоением при переполнении: 2048 → 4096 → 8192 → ...
+ * Рост — редкое событие (обычно один-два раза за сеанс), поэтому
+ * копирование через TypedArray#set приемлемо.
  */
 export class BodyStore {
   constructor(capacity = 2048) {
@@ -50,6 +53,48 @@ export class BodyStore {
     this.userId.fill(-1);
   }
 
+  /**
+   * Удваивает capacity. Все буферы заменяются на новые,
+   * старые данные копируются через TypedArray#set.
+   * Ссылка на сам BodyStore не меняется — все, кто держит
+   * `world.bodies`, автоматически видят новые массивы.
+   */
+  _grow() {
+    const newCap = this.capacity * 2;
+
+    const growF32 = (a) => { const n = new Float32Array(newCap); n.set(a); return n; };
+    const growU8  = (a) => { const n = new Uint8Array(newCap);  n.set(a); return n; };
+
+    this.x   = growF32(this.x);
+    this.y   = growF32(this.y);
+    this.vx  = growF32(this.vx);
+    this.vy  = growF32(this.vy);
+
+    this.angle    = growF32(this.angle);
+    this.angularV = growF32(this.angularV);
+
+    this.invMass     = growF32(this.invMass);
+    this.invInertia  = growF32(this.invInertia);
+    this.restitution = growF32(this.restitution);
+    this.friction    = growF32(this.friction);
+
+    this.halfW  = growF32(this.halfW);
+    this.halfH  = growF32(this.halfH);
+    this.radius = growF32(this.radius);
+
+    this.shape = growU8(this.shape);
+    this.btype = growU8(this.btype);
+    this.flags = growU8(this.flags);
+
+    // userId — заполняем -1, потом копируем старые значения поверх.
+    const nextUserId = new Int32Array(newCap);
+    nextUserId.fill(-1);
+    nextUserId.set(this.userId);
+    this.userId = nextUserId;
+
+    this.capacity = newCap;
+  }
+
   add({
     type = BodyType.DYNAMIC,
     shape = ShapeType.AABB,
@@ -62,9 +107,7 @@ export class BodyStore {
     friction = 0.4,
     userId = -1,
   } = {}) {
-    if (this.count >= this.capacity) {
-      throw new Error(`BodyStore overflow: capacity=${this.capacity}`);
-    }
+    if (this.count >= this.capacity) this._grow();
 
     const i = this.count++;
 
@@ -91,11 +134,9 @@ export class BodyStore {
       const area = (shape === ShapeType.CIRCLE)
         ? Math.PI * radius * radius
         : (halfW * 2) * (halfH * 2);
-      // 0.001 — "кг на пиксель²": при density=1 тело 40×40 весит ~1.6,
-      // импульс 800 даёт Δv ≈ 500 px/s, что даёт прыжок ~128 px.
       const mass = Math.max(1e-4, density * area * 0.001);
       this.invMass[i]    = 1 / mass;
-      this.invInertia[i] = 0;  // 3.4
+      this.invInertia[i] = 0;
     }
 
     this.flags[i] = 1;
@@ -106,5 +147,6 @@ export class BodyStore {
 
   clear() {
     this.count = 0;
+    // capacity сохраняем — не сжимаемся, чтобы не мигать туда-сюда.
   }
 }

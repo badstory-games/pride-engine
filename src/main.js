@@ -27,6 +27,7 @@ import { EventPalette }     from './editor/event-palette.js';
 import { VarsPanel } from './editor/vars-panel.js';
 import { History } from './editor/history.js';
 import { PerfOverlay } from './editor/perf-overlay.js';
+import { runBenchmark, formatResults } from './editor/benchmark.js';
 
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
 import { serializeProject, deserializeProject } from './project/serializer.js';
@@ -38,7 +39,6 @@ import { initIcons } from './editor/icons.js';
 async function main() {
   initIcons();
 
-  // --- Регистрация условий/действий ---
   registerConditions();
   registerActions();
 
@@ -93,7 +93,6 @@ async function main() {
   const controller = new EditorController(canvas, camera, editor);
   const bridge  = new PhysicsBridge(scene);
 
-  // --- Perf overlay (F8) ---
   const perfOverlay = new PerfOverlay(document.getElementById('canvas-wrap'));
 
   // --- Input ---
@@ -202,7 +201,6 @@ async function main() {
   if (!project.varsInitial) project.varsInitial = { ...project.vars };
   eventRuntime.setSheet(project.sheet);
 
-  // --- Event Sheet view ---
   const eventSheetPanel = new EventSheetPanel(
     document.getElementById('event-sheet-main'),
     project, eventRuntime, scene
@@ -277,7 +275,6 @@ async function main() {
       scene.fromJSON(s.scene);
       project.sheet       = s.sheet;
       project.varsInitial = s.varsInitial;
-      // project.vars — runtime, его не трогаем.
 
       editor.selection.clear();
       for (const id of s.selection) editor.selection.add(id);
@@ -308,7 +305,6 @@ async function main() {
   btnUndo.addEventListener('click', () => history.undo());
   btnRedo.addEventListener('click', () => history.redo());
 
-  // Первичный snapshot — после инициализации сцены/листа.
   history.init();
 
   // --- View tabs ---
@@ -448,6 +444,63 @@ async function main() {
   document.getElementById('btn-open-pride').addEventListener('click', doOpenPride);
   document.getElementById('btn-export')    .addEventListener('click', doExportGame);
 
+  // ============================================================
+  // Benchmark (F9)
+  // ============================================================
+
+  async function doBenchmark() {
+    if (bridge.running) {
+      await Modal.alert({
+        title: 'Бенчмарк недоступен',
+        message: 'Остановите Play (F7) перед запуском бенчмарка.',
+        okText: 'Понятно',
+      });
+      return;
+    }
+
+    const ok = await Modal.confirm({
+      title: 'Запустить бенчмарк?',
+      message:
+        'Будет временно создано до 5000 объектов и прогнано ~5 секунд симуляции. ' +
+        'Сцена восстановится автоматически. Не редактируйте её во время теста.',
+      okText: 'Запустить',
+      cancelText: 'Отмена',
+    });
+    if (!ok) return;
+
+    setIndicator('dirty', '● benchmark…');
+    try {
+      const results = await runBenchmark({
+        scene, bridge, perfOverlay,
+        setDebugDraw: (v) => {
+          console.log('[bench] setDebugDraw', v);   // ← добавить
+          const prev = debugDraw;
+          if (v !== null) {
+            debugDraw = v;
+            refreshPlayButtons();
+          }
+          return prev;
+        },
+        counts: [500, 1000, 2500, 5000],
+        framesPerTest: 90,
+      });
+      setIndicator('saved', '✓ benchmark done');
+      await Modal.alert({
+        title: 'Результаты бенчмарка',
+        message: formatResults(results),
+        okText: 'Закрыть',
+      });
+    } catch (e) {
+      console.error('[benchmark]', e);
+      setIndicator('error', '✕ benchmark error');
+      await Modal.alert({
+        title: 'Бенчмарк не удался',
+        message: e.message || 'Неизвестная ошибка.',
+        okText: 'Закрыть',
+      });
+    }
+  }
+
   // --- Play / Pause / Stop / Debug ---
   const btnPlay  = document.getElementById('btn-play');
   const btnPause = document.getElementById('btn-pause');
@@ -518,8 +571,8 @@ async function main() {
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
 
-    // F8 — toggle perf overlay
     if (e.code === 'F8') { e.preventDefault(); perfOverlay.toggle(); return; }
+    if (e.code === 'F9') { e.preventDefault(); doBenchmark();      return; }
 
     const tag = document.activeElement && document.activeElement.tagName;
     const inField = tag === 'INPUT' || tag === 'TEXTAREA';
@@ -549,7 +602,6 @@ async function main() {
   refreshPlayButtons();
   refreshUndoButtons();
 
-  // --- onChange ---
   editor.onChange = () => {
     refreshToolButtons();
     inspector.refresh();
@@ -561,7 +613,6 @@ async function main() {
   inspector.refresh();
   layersPanel.refresh();
 
-  // --- Батчи ---
   const gridBatch    = new SpriteBatch(renderer.device, renderer.format);
   const spriteBatch  = new SpriteBatch(renderer.device, renderer.format);
   const overlayBatch = new SpriteBatch(renderer.device, renderer.format);
@@ -587,14 +638,12 @@ async function main() {
 
     const { commandEncoder, renderPass } = renderer.beginFrame();
 
-    // 1) Grid
     renderer.setTexture(assets.get('__white').texture);
     renderPass.setBindGroup(0, renderer.bindGroup);
     gridBatch.begin();
     drawGrid(gridBatch, camera, canvas.width, canvas.height, 32);
     gridBatch.flush(renderPass);
 
-    // 2) Sprites
     spriteBatch.begin();
     const sorted = scene.getSortedByLayer();
     for (const obj of sorted) {
@@ -613,25 +662,23 @@ async function main() {
       renderPass.setBindGroup(0, renderer.bindGroup);
     });
 
-    // 3) Overlay
     renderer.setTexture(assets.get('__white').texture);
     renderPass.setBindGroup(0, renderer.bindGroup);
     overlayBatch.begin();
     drawOverlay(overlayBatch, editor, camera);
     overlayBatch.flush(renderPass);
 
-    // 4) Physics debug
+    physicsBatch.begin();
+
     if (bridge.running && debugDraw) {
       renderer.setTexture(assets.get('__white').texture);
       renderPass.setBindGroup(0, renderer.bindGroup);
-      physicsBatch.begin();
       drawPhysicsDebug(physicsBatch, bridge.world, camera);
       physicsBatch.flush(renderPass);
     }
 
     renderer.endFrame(commandEncoder, renderPass);
 
-    // Снимаем счётчики после flush, пока groups ещё живы.
     perfOverlay.set({
       drawCalls:  gridBatch.groups.length
                 + spriteBatch.groups.length
@@ -647,8 +694,8 @@ async function main() {
     });
 
     perfOverlay.endRender();
+    perfOverlay.tick();
 
-    // --- Status bar ---
     const now = performance.now();
     if (now - lastStatus > 100) {
       lastStatus = now;
@@ -679,8 +726,6 @@ async function main() {
 
   const loop = new GameLoop(update, render, (fps) => {
     fpsEl.textContent = `FPS: ${fps}`;
-    perfOverlay.beginFrame();
-    perfOverlay.tick();
   });
   loop.start();
 }
