@@ -26,6 +26,7 @@ import { EventSheetPanel } from './editor/event-sheet-panel.js';
 import { EventPalette }     from './editor/event-palette.js';
 import { VarsPanel } from './editor/vars-panel.js';
 import { History } from './editor/history.js';
+import { PerfOverlay } from './editor/perf-overlay.js';
 
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
 import { serializeProject, deserializeProject } from './project/serializer.js';
@@ -36,7 +37,7 @@ import { initIcons } from './editor/icons.js';
 
 async function main() {
   initIcons();
-  
+
   // --- Регистрация условий/действий ---
   registerConditions();
   registerActions();
@@ -91,6 +92,9 @@ async function main() {
   const editor  = new Editor(scene);
   const controller = new EditorController(canvas, camera, editor);
   const bridge  = new PhysicsBridge(scene);
+
+  // --- Perf overlay (F8) ---
+  const perfOverlay = new PerfOverlay(document.getElementById('canvas-wrap'));
 
   // --- Input ---
   const input = new InputState();
@@ -342,7 +346,7 @@ async function main() {
       varsPanel.refresh();
       setIndicator('saved', '✓ loaded');
       editor.onChange();
-      history.init();          // перезагрузка → обнуляем историю
+      history.init();
     } else {
       setIndicator('error', '✕ load error');
     }
@@ -363,6 +367,7 @@ async function main() {
     scene.layers = [{ id: 'default', name: 'Слой 1', visible: true }];
     scene.nextId = 1;
     scene.nextLayerId = 1;
+    scene._layerIdxDirty = true;
     project.sheet = defaultEventSheet();
     project.vars = {};
     project.varsInitial = {};
@@ -372,7 +377,7 @@ async function main() {
     editor.clearSelection();
     setIndicator('dirty', '● new');
     editor.onChange();
-    history.init();            // новый проект → обнуляем историю
+    history.init();
   });
 
   // --- File I/O: .pride + export ---
@@ -406,7 +411,7 @@ async function main() {
       editor.clearSelection();
       editor.onChange();
       setIndicator('saved', '✓ .pride loaded');
-      history.init();          // перезагрузка → обнуляем историю
+      history.init();
     } catch (e) {
       console.error('[open .pride]', e);
       setIndicator('error', '✕ load error');
@@ -414,7 +419,7 @@ async function main() {
         title: 'Не удалось открыть файл',
         message: e.message || 'Неизвестная ошибка.',
         okText: 'Закрыть',
-      })
+      });
     }
   }
 
@@ -470,6 +475,7 @@ async function main() {
       editor.locked = true;
       editor.clearSelection();
       input.clear();
+      eventRuntime.reset();
 
       varsPanel.setRunning(true);
       varsPanel.refresh();
@@ -512,13 +518,14 @@ async function main() {
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
 
+    // F8 — toggle perf overlay
+    if (e.code === 'F8') { e.preventDefault(); perfOverlay.toggle(); return; }
+
     const tag = document.activeElement && document.activeElement.tagName;
     const inField = tag === 'INPUT' || tag === 'TEXTAREA';
 
     const mod = e.ctrlKey || e.metaKey;
 
-    // Undo / Redo — только когда курсор не в поле ввода,
-    // чтобы не отбирать системный undo у input'а.
     if (mod && e.code === 'KeyZ' && !inField) {
       e.preventDefault();
       if (e.shiftKey) history.redo(); else history.undo();
@@ -563,14 +570,18 @@ async function main() {
   let lastStatus = 0;
 
   function update(dt) {
+    perfOverlay.beginUpdate();
     bridge.step(dt);
     if (bridge.running && !bridge.paused) {
       eventRuntime.tick(dt);
     }
     input.endFrame();
+    perfOverlay.endUpdate();
   }
 
   function render() {
+    perfOverlay.beginRender();
+
     camera.writeMatrix(renderer.uniformData, canvas.width, canvas.height);
     renderer.device.queue.writeBuffer(renderer.uniformBuffer, 0, renderer.uniformData);
 
@@ -585,7 +596,8 @@ async function main() {
 
     // 2) Sprites
     spriteBatch.begin();
-    for (const obj of scene.getSortedByLayer()) {
+    const sorted = scene.getSortedByLayer();
+    for (const obj of sorted) {
       const asset = obj.textureId && assets.get(obj.textureId);
       if (!asset) continue;
       spriteBatch.beginGroup(obj.textureId);
@@ -619,6 +631,23 @@ async function main() {
 
     renderer.endFrame(commandEncoder, renderPass);
 
+    // Снимаем счётчики после flush, пока groups ещё живы.
+    perfOverlay.set({
+      drawCalls:  gridBatch.groups.length
+                + spriteBatch.groups.length
+                + overlayBatch.groups.length
+                + physicsBatch.groups.length,
+      vertices:   gridBatch.vertexCount
+                + spriteBatch.vertexCount
+                + overlayBatch.vertexCount
+                + physicsBatch.vertexCount,
+      objects:    sorted.length,
+      bodies:     bridge.bodiesCount,
+      collisions: bridge.world.collisions.length,
+    });
+
+    perfOverlay.endRender();
+
     // --- Status bar ---
     const now = performance.now();
     if (now - lastStatus > 100) {
@@ -650,6 +679,8 @@ async function main() {
 
   const loop = new GameLoop(update, render, (fps) => {
     fpsEl.textContent = `FPS: ${fps}`;
+    perfOverlay.beginFrame();
+    perfOverlay.tick();
   });
   loop.start();
 }

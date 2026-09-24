@@ -1226,3 +1226,35 @@ aside h3 {
   width: 100%;
   margin-top: 4px;
 }
+
+/* ============================================================
+   PERF OVERLAY (F8)
+   ============================================================ */
+.perf-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 170px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 6px 9px;
+  font: 11px/1.4 ui-monospace, monospace;
+  color: #ccc;
+  pointer-events: none;
+  z-index: 20;
+  user-select: none;
+}
+.perf-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  white-space: nowrap;
+}
+.perf-row > span:first-child { color: #888; }
+.perf-row > span:last-child  { color: #8c8; }
+.perf-sep {
+  height: 1px;
+  background: #333;
+  margin: 4px 0;
+}

@@ -3,6 +3,9 @@
  * Тела вставляются во все ячейки, которые пересекает их AABB.
  * Пары дедуплицируются через Set (для 3.1 приемлемо; на этапе 6 заменим
  * на плоский stamp-массив без аллокаций).
+ *
+ * Оптимизация 6.x: bucket-массивы не уничтожаются в clear(), а возвращаются
+ * в пул. После первого «холодного» кадра insert() не аллоцирует.
  */
 export class SpatialHash {
   constructor(cellSize = 64) {
@@ -11,6 +14,7 @@ export class SpatialHash {
     this.cells = new Map();          // key → number[]
     this.pairs = [];                  // flat: [a0,b0, a1,b1, ...]
     this._seen = new Set();
+    this._bucketPool = [];            // пул пустых bucket-массивов
   }
 
   _key(cx, cy) {
@@ -19,6 +23,12 @@ export class SpatialHash {
   }
 
   clear() {
+    // Возвращаем bucket-массивы в пул вместо уничтожения.
+    // Array#length = 0 сохраняет capacity — повторный push не реаллоцирует.
+    for (const bucket of this.cells.values()) {
+      bucket.length = 0;
+      this._bucketPool.push(bucket);
+    }
     this.cells.clear();
     this.pairs.length = 0;
     this._seen.clear();
@@ -36,7 +46,7 @@ export class SpatialHash {
         const k = this._key(cx, cy);
         let bucket = this.cells.get(k);
         if (!bucket) {
-          bucket = [];
+          bucket = this._bucketPool.pop() || [];
           this.cells.set(k, bucket);
         }
         bucket.push(index);

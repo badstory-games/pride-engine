@@ -8,6 +8,11 @@ export class Scene {
     ];
     this.nextId = 1;
     this.nextLayerId = 1;
+
+    // Hot-path буферы: переиспользуются, не сохранять между вызовами.
+    this._renderBuf = [];
+    this._layerIdx = new Map();
+    this._layerIdxDirty = true;
   }
 
   // ---------- Layers ----------
@@ -15,6 +20,7 @@ export class Scene {
     const id = 'layer_' + (this.nextLayerId++);
     const layer = { id, name: name || `Слой ${this.layers.length + 1}`, visible: true };
     this.layers.push(layer);
+    this._layerIdxDirty = true;
     return layer;
   }
 
@@ -33,6 +39,7 @@ export class Scene {
     const j = i + dir;
     if (j < 0 || j >= this.layers.length) return false;
     [this.layers[i], this.layers[j]] = [this.layers[j], this.layers[i]];
+    this._layerIdxDirty = true;
     return true;
   }
 
@@ -44,6 +51,7 @@ export class Scene {
       if (o.layerId === id) o.layerId = fallback.id;
     }
     this.layers = this.layers.filter((l) => l.id !== id);
+    this._layerIdxDirty = true;
     return true;
   }
 
@@ -82,21 +90,42 @@ export class Scene {
     return this.objects.find((o) => o.id === id) || null;
   }
 
+  /**
+   * Видимые объекты, отсортированные по индексу слоя (снизу вверх).
+   *
+   * ⚠️ Возвращаемый массив переиспользуется между вызовами.
+   *    Потребляйте результат сразу — не сохраняйте ссылку.
+   *
+   * Внутри — ноль аллокаций: только push в предвыделенный буфер
+   * и in-place sort. Layer-index кэшируется и инвалидируется
+   * при изменении списка слоёв.
+   */
   getSortedByLayer() {
-    const idx = new Map();
-    this.layers.forEach((l, i) => idx.set(l.id, i));
-    const arr = this.objects
-      .map((o, i) => ({ o, i }))
-      .filter((e) => {
-        const l = this.getLayer(e.o.layerId);
-        return l && l.visible && e.o.visible;
-      });
-    arr.sort((a, b) => {
-      const la = idx.get(a.o.layerId) ?? 0;
-      const lb = idx.get(b.o.layerId) ?? 0;
-      return (la - lb) || (a.i - b.i);
-    });
-    return arr.map((e) => e.o);
+    if (this._layerIdxDirty) {
+      this._layerIdx.clear();
+      for (let i = 0; i < this.layers.length; i++) {
+        this._layerIdx.set(this.layers[i].id, i);
+      }
+      this._layerIdxDirty = false;
+    }
+
+    const idx    = this._layerIdx;
+    const layers = this.layers;
+    const buf    = this._renderBuf;
+    buf.length = 0;
+
+    for (const o of this.objects) {
+      if (!o.visible) continue;
+      const li = idx.get(o.layerId);
+      if (li === undefined) continue;
+      if (!layers[li].visible) continue;
+      buf.push(o);
+    }
+
+    // Array#sort стабилен (ES2019+), поэтому объекты одного слоя
+    // сохраняют исходный порядок добавления — z-order корректен.
+    buf.sort((a, b) => idx.get(a.layerId) - idx.get(b.layerId));
+    return buf;
   }
 
   // ---------- Serialize ----------
@@ -116,6 +145,7 @@ export class Scene {
       : [{ id: 'default', name: 'Слой 1', visible: true }];
     this.nextId   = data.nextId || (this.objects.reduce((m, o) => Math.max(m, o.id), 0) + 1);
     this.nextLayerId = data.nextLayerId || (this.layers.length + 1);
+    this._layerIdxDirty = true;
 
     const fallback = this.layers[0].id;
     for (const o of this.objects) {

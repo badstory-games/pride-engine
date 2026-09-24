@@ -9,6 +9,10 @@ export class Renderer {
     this.sampler = null;
     this.texture = null;
     this.uniformData = new Float32Array(16);
+
+    // Кэши, живущие весь сеанс рендерера.
+    this._bgl = null;
+    this._bindGroupCache = new Map();   // GPUTexture → GPUBindGroup
   }
 
   async init(canvas) {
@@ -28,6 +32,9 @@ export class Renderer {
     this.createPipeline();
     this.createUniforms();
     this.createSampler();
+
+    // Кэшируем layout один раз — используется в setTexture.
+    this._bgl = this.pipeline.getBindGroupLayout(0);
   }
 
   createPipeline() {
@@ -91,14 +98,21 @@ export class Renderer {
     this.texture = texture;
     this.sampler = sampler || this.sampler;
 
-    this.bindGroup = this.device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.uniformBuffer } },
-        { binding: 1, resource: this.sampler },
-        { binding: 2, resource: this.texture.createView() },
-      ],
-    });
+    // Один bind group на текстуру за всё время жизни рендерера.
+    // uniformBuffer стабилен, sampler стабилен, view текстуры стабилен.
+    let bg = this._bindGroupCache.get(texture);
+    if (!bg) {
+      bg = this.device.createBindGroup({
+        layout: this._bgl,
+        entries: [
+          { binding: 0, resource: { buffer: this.uniformBuffer } },
+          { binding: 1, resource: this.sampler },
+          { binding: 2, resource: texture.createView() },
+        ],
+      });
+      this._bindGroupCache.set(texture, bg);
+    }
+    this.bindGroup = bg;
   }
 
   beginFrame() {
