@@ -1258,3 +1258,75 @@ aside h3 {
   background: #333;
   margin: 4px 0;
 }
+
+/* ============================================================
+   TEMPLATE MODAL
+   ============================================================ */
+.template-modal {
+  width: min(760px, 92vw);
+}
+.template-modal .modal-box-header h3 {
+  margin: 0 0 4px;
+}
+.template-modal-hint {
+  margin: 0;
+  font: 12px/1.5 system-ui;
+  color: #888;
+}
+
+.template-modal-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 14px 16px 4px;
+}
+@media (max-width: 640px) {
+  .template-modal-body { grid-template-columns: 1fr; }
+}
+
+.template-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 14px 16px;
+  background: #262626;
+  color: #ddd;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  font: 13px system-ui;
+  cursor: pointer;
+  text-align: left;
+  transition: background 100ms, border-color 100ms, transform 100ms;
+}
+.template-card:hover {
+  background: #2c2c2c;
+  border-color: #4a7ea8;
+}
+.template-card:active {
+  transform: translateY(1px);
+}
+.template-card:focus-visible {
+  outline: none;
+  border-color: #4a7ea8;
+  box-shadow: 0 0 0 2px rgba(74, 126, 168, 0.35);
+}
+
+.template-card-icon {
+  font-size: 22px;
+  color: #7fa8d4;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+.template-card-icon > .icon { font-size: 22px; }
+
+.template-card-name {
+  font-weight: 600;
+  color: #fff;
+  font-size: 13px;
+}
+.template-card-desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #999;
+}

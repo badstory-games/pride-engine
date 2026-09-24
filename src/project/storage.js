@@ -1,21 +1,15 @@
 const KEY = 'pride.project.v1';
 
-/**
- * project = {
- *   scene: Scene,
- *   sheet: object|null,
- *   vars: object,          — runtime значения
- *   varsInitial: object,   — начальные значения
- * }
- */
 export function saveProject(project) {
   try {
     const payload = {
-      version: 3,
+      version: 4,
       scene:       project.scene.toJSON(),
       sheet:       project.sheet,
       vars:        project.vars,
       varsInitial: project.varsInitial,
+      gravityX:    project.gravityX ?? 0,
+      gravityY:    project.gravityY ?? 980,
     };
     localStorage.setItem(KEY, JSON.stringify(payload));
     return true;
@@ -31,10 +25,6 @@ export function loadProject(project) {
   try {
     const data = JSON.parse(raw);
 
-    // --- миграции ---
-    // v1: сцена на верхнем уровне; полей vars/varsInitial нет.
-    // v2: есть vars/varsInitial, но нет scene (тоже кладём сцену наверх).
-    // v3: текущий формат — { scene, sheet, vars, varsInitial }.
     let sceneData   = data.scene;
     let sheetData   = data.sheet;
     let varsData    = data.vars;
@@ -48,6 +38,8 @@ export function loadProject(project) {
     project.sheet = sheetData || null;
     project.vars = { ...varsData };
     project.varsInitial = { ...initialData };
+    project.gravityX = data.gravityX ?? 0;
+    project.gravityY = data.gravityY ?? 980;
 
     return true;
   } catch (e) {

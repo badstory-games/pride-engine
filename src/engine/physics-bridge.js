@@ -16,12 +16,21 @@ export function defaultPhysics() {
 }
 
 export class PhysicsBridge {
-  /** @param {Scene} scene */
-  constructor(scene) {
+  /**
+   * @param {Scene} scene
+   * @param {object} [opts]
+   * @param {number} [opts.gravityX=0]
+   * @param {number} [opts.gravityY=980]
+   */
+  constructor(scene, opts = {}) {
     this.scene = scene;
+
+    this.gravityX = opts.gravityX ?? 0;
+    this.gravityY = opts.gravityY ?? 980;
+
     this.world = new World({
-      gravityX: 0,
-      gravityY: 980,
+      gravityX: this.gravityX,
+      gravityY: this.gravityY,
       iterations: 8,
       cellSize: 64,
     });
@@ -29,13 +38,12 @@ export class PhysicsBridge {
     this.running = false;
     this.paused = false;
 
-    /** Снимок сцены для отката при Stop (позиции, rotation, opacity, visible). */
+    /** Снимок сцены для отката при Stop. */
     this.snapshot = null;
 
     /**
      * Тело ↔ объект сцены.
-     * obj — прямая ссылка, чтобы sync() не звал scene.get() (он O(n))
-     * и не превращал синхронизацию в O(n²).
+     * obj — прямая ссылка, чтобы sync() не звал scene.get() (он O(n)).
      * @type {{bodyIndex:number, objectId:number, obj:object}[]}
      */
     this.mapping = [];
@@ -43,6 +51,18 @@ export class PhysicsBridge {
 
   get bodiesCount() {
     return this.world.bodies.count;
+  }
+
+  /**
+   * Обновляет гравитацию на лету. Можно звать и во время Play.
+   * Идемпотентно: если значения те же — ничего не делает.
+   */
+  setGravity(gx, gy) {
+    if (this.gravityX === gx && this.gravityY === gy) return;
+    this.gravityX = gx;
+    this.gravityY = gy;
+    this.world.gravityX = gx;
+    this.world.gravityY = gy;
   }
 
   start() {

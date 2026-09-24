@@ -78,7 +78,10 @@ export async function startGame(projectData, assetsData, opts = {}) {
     );
   }
 
-  const bridge = new PhysicsBridge(scene);
+  const bridge = new PhysicsBridge(scene, {
+    gravityX: projectData.gravityX ?? 0,
+    gravityY: projectData.gravityY ?? 980,
+  });
   const input  = new InputState();
   const vars   = { ...(projectData.varsInitial || {}) };
 

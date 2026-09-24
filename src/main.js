@@ -36,6 +36,8 @@ import { downloadBytes, downloadText, pickFile, readFileBytes } from './project/
 import { exportWebGame } from './export/exporter.js';
 import { Modal } from './editor/modal.js';
 import { initIcons } from './editor/icons.js';
+import { TemplateModal } from './editor/template-modal.js';
+import { getTemplate } from './editor/templates.js';
 
 async function main() {
   initIcons();
@@ -89,11 +91,20 @@ async function main() {
 
   // --- Сцена / проект / редактор ---
   const scene   = new Scene();
-  const project = { scene, sheet: null, vars: {}, varsInitial: {} };
+  const project = {
+    scene, sheet: null,
+    vars: {}, varsInitial: {},
+    gravityX: 0,
+    gravityY: 980,
+  };
   const editor  = new Editor(scene);
   const controller = new EditorController(canvas, camera, editor);
-  const bridge  = new PhysicsBridge(scene);
+  const bridge  = new PhysicsBridge(scene, {
+    gravityX: project.gravityX,
+    gravityY: project.gravityY,
+  });
   const clipboard = new Clipboard();
+  const templateModal = new TemplateModal();
 
   const perfOverlay = new PerfOverlay(document.getElementById('canvas-wrap'));
 
@@ -342,6 +353,9 @@ async function main() {
       eventRuntime.setSheet(project.sheet);
       eventSheetPanel.refresh();
       varsPanel.refresh();
+
+      bridge.setGravity(project.gravityX, project.gravityY);
+
       setIndicator('saved', '✓ loaded');
       editor.onChange();
       history.init();
@@ -351,24 +365,24 @@ async function main() {
   });
 
   document.getElementById('btn-new').addEventListener('click', async () => {
-    const ok = await Modal.confirm({
-      title: 'Создать новый проект',
-      message: 'Текущая сцена, лист событий и переменные будут сброшены. Несохранённые изменения будут потеряны.',
-      okText: 'Создать',
-      cancelText: 'Отмена',
-      danger: true,
-    });
-    if (!ok) return;
+    const templateId = await templateModal.pick();
+    if (!templateId) return;
+
+    const tpl = getTemplate(templateId);
+    if (!tpl) return;
 
     clearProject();
-    scene.objects = [];
-    scene.layers = [{ id: 'default', name: 'Слой 1', visible: true }];
-    scene.nextId = 1;
-    scene.nextLayerId = 1;
-    scene._layerIdxDirty = true;
-    project.sheet = defaultEventSheet();
-    project.vars = {};
-    project.varsInitial = {};
+
+    const fresh = tpl.create();
+    scene.fromJSON(fresh.scene);
+    project.sheet       = fresh.sheet;
+    project.vars        = {};
+    project.varsInitial = structuredClone(fresh.varsInitial || {});
+    project.gravityX    = fresh.gravityX ?? 0;
+    project.gravityY    = fresh.gravityY ?? 980;
+
+    bridge.setGravity(project.gravityX, project.gravityY);
+
     eventRuntime.setSheet(project.sheet);
     eventSheetPanel.refresh();
     varsPanel.refresh();
@@ -402,6 +416,11 @@ async function main() {
       project.sheet       = loaded.sheet || defaultEventSheet();
       project.vars        = loaded.vars;
       project.varsInitial = loaded.varsInitial;
+
+      project.gravityX    = loaded.gravityX ?? 0;
+      project.gravityY    = loaded.gravityY ?? 980;
+
+      bridge.setGravity(project.gravityX, project.gravityY);
 
       eventRuntime.setSheet(project.sheet);
       eventSheetPanel.refresh();
