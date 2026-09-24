@@ -7,8 +7,10 @@ export class Editor {
     this.box = null;
     this.pendingRect = null;
     this.hovered = null;
-    this.locked = false;   // блокировка редактирования во время Play
+    this.locked = false;
     this.onChange = () => {};
+    /** @type {import('./history.js').History|null} */
+    this.history = null;
   }
 
   clearSelection() {
@@ -40,9 +42,13 @@ export class Editor {
 
   deleteSelected() {
     if (this.selection.size === 0) return;
-    for (const id of [...this.selection]) this.scene.remove(id);
-    this.selection.clear();
-    this.hovered = null;
+    const h = this.history;
+    const apply = () => {
+      for (const id of [...this.selection]) this.scene.remove(id);
+      this.selection.clear();
+      this.hovered = null;
+    };
+    if (h) h.run('Delete', apply); else apply();
     this.onChange();
   }
 }

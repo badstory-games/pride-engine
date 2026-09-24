@@ -2,18 +2,26 @@ export class AssetManager {
   constructor(device) {
     this.device = device;
     this.assets = new Map();
+    /** id → Blob (только для загруженных через loadPNG). */
+    this.blobs = new Map();
   }
 
   async loadPNG(id, url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
     const blob = await res.blob();
+    this.blobs.set(id, blob);
     const bitmap = await createImageBitmap(blob);
     return this._upload(id, bitmap);
   }
 
   loadFromBitmap(id, bitmap) {
     return this._upload(id, bitmap);
+  }
+
+  /** Исходный blob для экспорта; null, если ассет не подгружался из файла. */
+  getSourceBlob(id) {
+    return this.blobs.get(id) || null;
   }
 
   _upload(id, bitmap) {

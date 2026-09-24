@@ -43,6 +43,8 @@ export class EditorController {
     this.editor.onChange();
   }
 
+  _history() { return this.editor.history; }
+
   _bind() {
     const c = this.canvas;
     const ed = this.editor;
@@ -56,7 +58,6 @@ export class EditorController {
       this.mouseScreen = s;
       this.mouseWorld = w;
 
-      // Pan доступен всегда
       if (e.button === 1 || (e.button === 0 && e.altKey)) {
         e.preventDefault();
         this.panning = true;
@@ -66,8 +67,6 @@ export class EditorController {
       }
 
       if (e.button !== 0) return;
-
-      // Всё редактирующее — только когда редактор разблокирован
       if (ed.locked) return;
 
       const shift = e.shiftKey;
@@ -86,6 +85,9 @@ export class EditorController {
               if (o) originals.set(id, { x: o.x, y: o.y });
             }
             ed.drag = { startWorld: w, originals };
+
+            const h = this._history();
+            if (h) h.begin('Move');
           }
         } else {
           if (!shift) ed.clearSelection();
@@ -94,12 +96,16 @@ export class EditorController {
       } else if (ed.tool === 'rectangle') {
         ed.pendingRect = { x0: w.x, y0: w.y, x1: w.x, y1: w.y };
       } else if (ed.tool === 'sprite') {
-        const obj = ed.scene.add({
-          x: w.x - 32, y: w.y - 32,
-          width: 64, height: 64,
-          textureId: 'player',
-        });
-        ed.select(obj.id, false);
+        const h = this._history();
+        const create = () => {
+          const obj = ed.scene.add({
+            x: w.x - 32, y: w.y - 32,
+            width: 64, height: 64,
+            textureId: 'player',
+          });
+          ed.select(obj.id, false);
+        };
+        if (h) h.run('Create sprite', create); else create();
         ed.onChange();
       }
     });
@@ -128,7 +134,6 @@ export class EditorController {
           o.x = orig.x + dx;
           o.y = orig.y + dy;
         }
-        // обновляем инспектор, но НЕ сохраняем проект на каждое движение
         ed.onChange();
       } else if (ed.box) {
         ed.box.x1 = w.x;
@@ -157,6 +162,8 @@ export class EditorController {
 
       if (ed.drag) {
         ed.drag = null;
+        const h = this._history();
+        if (h) h.commit();       // закрываем drag-транзакцию
         ed.onChange();
       } else if (ed.box) {
         const objs = objectsInRect(ed.scene, ed.box.x0, ed.box.y0, ed.box.x1, ed.box.y1);
@@ -170,12 +177,16 @@ export class EditorController {
         const rw = x1 - x0;
         const rh = y1 - y0;
         if (rw > 2 && rh > 2) {
-          const obj = ed.scene.add({
-            x: x0, y: y0,
-            width: rw, height: rh,
-            textureId: 'player',
-          });
-          ed.select(obj.id, false);
+          const h = this._history();
+          const create = () => {
+            const obj = ed.scene.add({
+              x: x0, y: y0,
+              width: rw, height: rh,
+              textureId: 'player',
+            });
+            ed.select(obj.id, false);
+          };
+          if (h) h.run('Create rect', create); else create();
           ed.onChange();
         }
         ed.pendingRect = null;
@@ -195,7 +206,6 @@ export class EditorController {
 
     // ------------- KEYDOWN -------------
     window.addEventListener('keydown', (e) => {
-      // F1 / ? — всегда
       if (e.code === 'F1' || e.key === '?') {
         e.preventDefault();
         e.stopPropagation();
@@ -225,6 +235,10 @@ export class EditorController {
       }
 
       if (e.code === 'Escape') {
+        // Откатываем незакрытую транзакцию (например, при отмене drag'а).
+        const h = ed.history;
+        if (h && h.pending) h.rollback();
+
         ed.clearSelection();
         ed.box = null;
         ed.pendingRect = null;

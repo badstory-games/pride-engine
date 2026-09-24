@@ -27,6 +27,9 @@ import { EventPalette }     from './editor/event-palette.js';
 import { VarsPanel } from './editor/vars-panel.js';
 
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
+import { serializeProject, deserializeProject } from './project/serializer.js';
+import { downloadBytes, downloadText, pickFile, readFileBytes } from './project/file-io.js';
+import { exportWebGame } from './export/exporter.js';
 
 async function main() {
   // --- Регистрация условий/действий ---
@@ -282,6 +285,65 @@ async function main() {
     editor.onChange();
   });
 
+  // --- File I/O: .pride + export ---
+
+  async function doSavePride() {
+    try {
+      const bytes = await serializeProject(project);
+      downloadBytes(bytes, 'project.pride', 'application/octet-stream');
+      setIndicator('saved', '✓ .pride');
+    } catch (e) {
+      console.error('[save .pride]', e);
+      setIndicator('error', '✕ save error');
+    }
+  }
+
+  async function doOpenPride() {
+    try {
+      const file = await pickFile('.pride,application/octet-stream');
+      if (!file) return;
+
+      const bytes  = await readFileBytes(file);
+      const loaded = await deserializeProject(bytes, scene);
+
+      project.sheet       = loaded.sheet || defaultEventSheet();
+      project.vars        = loaded.vars;
+      project.varsInitial = loaded.varsInitial;
+
+      eventRuntime.setSheet(project.sheet);
+      eventSheetPanel.refresh();
+      varsPanel.refresh();
+      editor.clearSelection();
+      editor.onChange();
+      setIndicator('saved', '✓ .pride loaded');
+    } catch (e) {
+      console.error('[open .pride]', e);
+      setIndicator('error', '✕ load error');
+      alert('Не удалось открыть файл: ' + e.message);
+    }
+  }
+
+  async function doExportGame() {
+    setIndicator('dirty', '● exporting…');
+    try {
+      const html = await exportWebGame(project, {
+        title: 'Pride Game',
+        debugDraw: false,
+        assetManager: assets,   // ← именно assets (локальная переменная)
+      });
+      downloadText(html, 'game.html', 'text/html;charset=utf-8');
+      setIndicator('saved', '✓ exported');
+    } catch (e) {
+      console.error('[export]', e);
+      setIndicator('error', '✕ export error');
+      alert('Экспорт не удался: ' + e.message);
+    }
+  }
+
+  document.getElementById('btn-save-pride').addEventListener('click', doSavePride);
+  document.getElementById('btn-open-pride').addEventListener('click', doOpenPride);
+  document.getElementById('btn-export')    .addEventListener('click', doExportGame);
+
   // --- Play / Pause / Stop / Debug ---
   const btnPlay  = document.getElementById('btn-play');
   const btnPause = document.getElementById('btn-pause');
@@ -301,7 +363,6 @@ async function main() {
 
   function doPlay() {
     if (!bridge.running) {
-      // Сброс runtime-переменных из initial
       for (const k of Object.keys(project.vars)) delete project.vars[k];
       Object.assign(project.vars, project.varsInitial);
 
@@ -327,7 +388,6 @@ async function main() {
   function doStop() {
     if (bridge.running) bridge.stop();
 
-    // Возврат vars к initial
     for (const k of Object.keys(project.vars)) delete project.vars[k];
     Object.assign(project.vars, project.varsInitial);
 
@@ -351,11 +411,17 @@ async function main() {
 
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    const mod = e.ctrlKey || e.metaKey;
+
+    if (mod && e.code === 'KeyS') { e.preventDefault(); doSavePride();  return; }
+    if (mod && e.code === 'KeyO') { e.preventDefault(); doOpenPride();  return; }
+    if (mod && e.code === 'KeyE') { e.preventDefault(); doExportGame(); return; }
+
     if (e.code === 'F5')      { e.preventDefault(); doPlay();  }
     else if (e.code === 'F6') { e.preventDefault(); doPause(); }
     else if (e.code === 'F7') { e.preventDefault(); doStop();  }
   });
-  
+
   refreshPlayButtons();
 
   // --- onChange: единая точка обновления UI ---
@@ -441,13 +507,13 @@ async function main() {
       lastStatus = now;
       const w = controller.mouseWorld;
       const state = bridge.running ? (bridge.paused ? 'PAUSED' : 'PLAYING') : 'EDITING';
-      
+
       const varsPreview = Object.keys(project.vars)
         .slice(0, 4)
         .map((k) => `${k}=${project.vars[k]}`)
         .join(' ');
       const varsStr = varsPreview ? `  |  ${varsPreview}` : '';
-      
+
       statusEl.textContent =
         `Tool: ${editor.tool}  |  ` +
         `Camera: (${camera.x.toFixed(0)}, ${camera.y.toFixed(0)})  |  ` +
@@ -456,7 +522,7 @@ async function main() {
         `Selected: ${editor.selection.size}/${scene.objects.length}  |  ` +
         `Bodies: ${bridge.bodiesCount}  |  ${state}` +
         varsStr;
-              // Обновляем панель переменных во время игры — иначе значения не видны
+
       if (bridge.running && !bridge.paused) {
         varsPanel.updateCurrent();
       }
