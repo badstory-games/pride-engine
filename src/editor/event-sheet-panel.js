@@ -2,6 +2,13 @@ import { registry } from '../engine/events/registry.js';
 import { EventPopover } from './event-popover.js';
 import { Modal } from './modal.js';
 import { icon } from './icons.js';
+import {
+  EVENT, GROUP, COMMENT,
+  kindOf,
+  walkEvents, nextId,
+  findElement, findParentArray,
+} from '../engine/events/sheet-utils.js';
+import { showHintOnce } from './hints.js';
 
 const KEY_OPTIONS = [
   'Space', 'Enter', 'Escape', 'Tab',
@@ -10,6 +17,8 @@ const KEY_OPTIONS = [
   'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyJ', 'KeyK', 'KeyL',
   'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5',
 ];
+
+const COMMENT_COLORS = ['yellow', 'green', 'blue', 'red', 'gray'];
 
 export class EventSheetPanel {
   constructor(container, project, eventRuntime, scene) {
@@ -27,7 +36,13 @@ export class EventSheetPanel {
         <h3>Лист событий</h3>
         <div class="es-toolbar-actions">
           <button class="topbtn" data-action="add-event">
-            <svg class="icon"><use href="#icon-plus"/></svg><span>Событие</span>
+            ${icon('plus')}<span>Событие</span>
+          </button>
+          <button class="topbtn" data-action="add-group">
+            ${icon('git-branch')}<span>Группа</span>
+          </button>
+          <button class="topbtn" data-action="add-comment">
+            ${icon('copy')}<span>Комментарий</span>
           </button>
         </div>
       </div>
@@ -38,6 +53,10 @@ export class EventSheetPanel {
     container.addEventListener('click',  (e) => this._onClick(e));
     container.addEventListener('input',  (e) => this._onInput(e));
     container.addEventListener('change', (e) => this._onChangeEl(e));
+    container.addEventListener('keydown', (e) => this._onKeydown(e));
+    // contenteditable blur не всплывает — ловим в capture-фазе
+    container.addEventListener('blur', (e) => this._onBlur(e), true);
+
     this._attachDnD();
   }
 
@@ -58,14 +77,10 @@ export class EventSheetPanel {
 
   _nextUid(sheet) {
     let max = 0;
-    const walk = (arr) => {
-      for (const ev of arr) {
-        for (const c of (ev.conditions || [])) if (c.uid > max) max = c.uid;
-        for (const a of (ev.actions    || [])) if (a.uid > max) max = a.uid;
-        if (ev.children) walk(ev.children);
-      }
-    };
-    walk(sheet.events);
+    walkEvents(sheet.events || [], (ev) => {
+      for (const c of (ev.conditions || [])) if (c.uid > max) max = c.uid;
+      for (const a of (ev.actions    || [])) if (a.uid > max) max = a.uid;
+    });
     return max + 1;
   }
 
@@ -73,14 +88,10 @@ export class EventSheetPanel {
     const sheet = this._getSheet();
     if (!sheet) return;
     let counter = this._nextUid(sheet);
-    const walk = (arr) => {
-      for (const ev of arr) {
-        for (const c of (ev.conditions || [])) if (!c.uid) c.uid = counter++;
-        for (const a of (ev.actions    || [])) if (!a.uid) a.uid = counter++;
-        if (ev.children) walk(ev.children);
-      }
-    };
-    walk(sheet.events);
+    walkEvents(sheet.events || [], (ev) => {
+      for (const c of (ev.conditions || [])) if (!c.uid) c.uid = counter++;
+      for (const a of (ev.actions    || [])) if (!a.uid) a.uid = counter++;
+    });
   }
 
   // ============================================================
@@ -91,24 +102,146 @@ export class EventSheetPanel {
     this._ensureUids();
 
     const sheet = this._getSheet();
-    if (!sheet || !sheet.events.length) {
-      this.listEl.innerHTML =
-        '<div class="es-empty">Нет событий. Перетащите условие из палитры или нажмите «+ Событие».</div>';
-    }
     this.listEl.innerHTML = '';
-    for (const ev of sheet.events) this.listEl.appendChild(this._renderEvent(ev, 0));
+    if (!sheet || !sheet.events.length) {
+      const empty = document.createElement('div');
+      empty.className = 'es-empty';
+      empty.textContent = 'Нет событий. Перетащите условие из палитры или нажмите «+ Событие».';
+      this.listEl.appendChild(empty);
+      return;
+    }
+
+    for (const el of sheet.events) {
+      this.listEl.appendChild(this._renderElement(el, 0));
+    }
   }
+
+  _renderElement(el, depth) {
+    const k = kindOf(el);
+    if (k === GROUP)   return this._renderGroup(el, depth);
+    if (k === COMMENT) return this._renderComment(el, depth);
+    return this._renderEvent(el, depth);
+  }
+
+  // ----- group -----
+
+  _renderGroup(group, depth) {
+    const wrap = document.createElement('div');
+    wrap.className = 'es-group' +
+      (group.disabled ? ' disabled' : '') +
+      (group.collapsed ? ' collapsed' : '');
+    wrap.dataset.elementId = group.id;
+    wrap.dataset.elementType = 'group';
+    wrap.style.marginLeft = (depth * 24) + 'px';
+
+    const head = document.createElement('div');
+    head.className = 'es-group-head';
+    // Сама шапка НЕ draggable — таскать можно только за ручку слева.
+    head.innerHTML = `
+      <span class="es-element-drag"
+        draggable="true"
+        title="Перетащить группу">${icon('grip-vertical')}</span>
+      <label class="es-head-enable" title="Включить / выключить группу">
+        <input type="checkbox" data-action="toggle-group-enable"
+          ${group.disabled ? '' : 'checked'}>
+        <span></span>
+      </label>
+      <button class="es-group-toggle" data-action="toggle-group-collapse"
+        title="${group.collapsed ? 'Развернуть' : 'Свернуть'}"
+        draggable="false">
+        ${icon(group.collapsed ? 'chevron-down' : 'chevron-up')}
+      </button>
+      <input type="text" class="es-group-name"
+        data-action="rename-group"
+        draggable="false"
+        value="${this._escapeAttr(group.name || 'Группа')}"
+        title="Имя группы">
+      <div class="es-head-actions">
+        <button class="es-mini" data-action="add-group-event" title="Добавить событие в группу" draggable="false">
+          ${icon('plus')}<span>событие</span>
+        </button>
+        <button class="es-mini es-del" data-action="delete-group" title="Удалить группу" draggable="false">
+          ${icon('x')}
+        </button>
+      </div>
+    `;
+    wrap.appendChild(head);
+
+    if (!group.collapsed) {
+      const body = document.createElement('div');
+      body.className = 'es-group-body';
+      body.dataset.groupId = group.id;
+      if (!group.children || group.children.length === 0) {
+        body.innerHTML = '<div class="es-section-empty">Пустая группа. Нажмите «+ событие» или перетащите события сюда.</div>';
+      } else {
+        for (const child of group.children) {
+          body.appendChild(this._renderElement(child, depth + 1));
+        }
+      }
+      wrap.appendChild(body);
+    }
+
+    return wrap;
+  }
+
+  // ----- comment -----
+
+  _renderComment(comment, depth) {
+    const wrap = document.createElement('div');
+    wrap.className = 'es-comment';
+    wrap.dataset.elementId = comment.id;
+    wrap.dataset.elementType = 'comment';
+    wrap.dataset.color = comment.color || 'yellow';
+    wrap.style.marginLeft = (depth * 24) + 'px';
+
+    const head = document.createElement('div');
+    head.className = 'es-comment-head';
+    head.innerHTML = `
+      <span class="es-element-drag"
+        draggable="true"
+        title="Перетащить комментарий">${icon('grip-vertical')}</span>
+      <span class="es-comment-label">Комментарий</span>
+      <div class="es-comment-colors">
+        ${COMMENT_COLORS.map((c) => `
+          <button class="es-comment-color" data-action="set-comment-color"
+            data-color="${c}" title="${c}" draggable="false"></button>
+        `).join('')}
+      </div>
+      <button class="es-mini es-del" data-action="delete-comment" title="Удалить" draggable="false">
+        ${icon('x')}
+      </button>
+    `;
+    wrap.appendChild(head);
+
+    const text = document.createElement('div');
+    text.className = 'es-comment-text';
+    text.contentEditable = 'true';
+    text.spellcheck = false;
+    text.dataset.commentText = String(comment.id);
+    text.dataset.placeholder = 'Текст комментария…';
+    text.textContent = comment.text || '';
+    wrap.appendChild(text);
+
+    return wrap;
+  }
+
+  // ----- event (как было) -----
 
   _renderEvent(event, depth) {
     const wrap = document.createElement('div');
     wrap.className = 'es-event' + (event.disabled ? ' disabled' : '');
     wrap.dataset.eventId = event.id;
+    wrap.dataset.elementId = event.id;
+    wrap.dataset.elementType = 'event';
     wrap.style.marginLeft = (depth * 24) + 'px';
-    wrap.draggable = true;
+    // Больше не draggable — таскать только за ручку в шапке.
 
     const head = document.createElement('div');
     head.className = 'es-head';
     head.innerHTML = `
+      <span class="es-element-drag"
+        draggable="true"
+        title="Перетащить событие">${icon('grip-vertical')}</span>
       <label class="es-head-enable" title="Включить / выключить событие">
         <input type="checkbox" data-action="toggle-enable"
           ${event.disabled ? '' : 'checked'}>
@@ -116,19 +249,19 @@ export class EventSheetPanel {
       </label>
       <span class="es-event-id">#${event.id}</span>
       <div class="es-head-actions">
-        <button class="es-mini" data-action="add-condition" title="Добавить условие">
+        <button class="es-mini" data-action="add-condition" title="Добавить условие" draggable="false">
           ${icon('plus')}<span>условие</span>
         </button>
-        <button class="es-mini" data-action="add-action" title="Добавить действие">
+        <button class="es-mini" data-action="add-action" title="Добавить действие" draggable="false">
           ${icon('plus')}<span>действие</span>
         </button>
-        <button class="es-mini" data-action="add-child" title="Добавить дочернее событие">
+        <button class="es-mini" data-action="add-child" title="Добавить дочернее событие" draggable="false">
           ${icon('git-branch')}
         </button>
-        <button class="es-mini" data-action="duplicate" title="Дублировать">
+        <button class="es-mini" data-action="duplicate" title="Дублировать" draggable="false">
           ${icon('copy')}
         </button>
-        <button class="es-mini es-del" data-action="delete" title="Удалить">
+        <button class="es-mini es-del" data-action="delete" title="Удалить" draggable="false">
           ${icon('x')}
         </button>
       </div>
@@ -153,7 +286,6 @@ export class EventSheetPanel {
     } else {
       for (const a of event.actions) actsEl.appendChild(this._renderRow('action', a, event.id));
     }
-
 
     const body = document.createElement('div');
     body.className = 'es-body';
@@ -194,11 +326,11 @@ export class EventSheetPanel {
         ).join('')
       : `<span class="es-param-error">неизвестный тип: ${item.type}</span>`;
 
-     row.innerHTML = `
+    row.innerHTML = `
       <span class="es-drag-handle" title="Перетащить">${icon('grip-vertical')}</span>
       <span class="es-row-label">${def ? def.label : item.type}</span>
       <span class="es-params">${paramsHtml}</span>
-      <button class="es-row-del" data-action="${kind === 'cond' ? 'del-condition' : 'del-action'}" title="Удалить">
+      <button class="es-row-del" data-action="${kind === 'cond' ? 'del-condition' : 'del-action'}" title="Удалить" draggable="false">
         ${icon('x')}
       </button>
     `;
@@ -247,13 +379,12 @@ export class EventSheetPanel {
       const opts = [...names].map((n) =>
         `<option value="${n}"${n === val ? ' selected' : ''}>${n === '*' ? '* (Все объекты, с динамическим типом тела)' : n}</option>`).join('');
       const extra = inList ? '' :
-        `<option value="${val}" selected>${val} (нет в сцене)</option>`;  
+        `<option value="${val}" selected>${val} (нет в сцене)</option>`;
 
       return `<label class="es-param"><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
 
-    // ---- instvar: список instance-переменных объектов под target ----
     if (def.type === 'instvar') {
       const target = (allParams && allParams.target) || '*';
       const names = new Set();
@@ -265,7 +396,6 @@ export class EventSheetPanel {
       const list = [...names].sort();
 
       if (list.length === 0) {
-        // Нет известных переменных — fallback на текст.
         return `<label class="es-param"><span>${def.label}</span>
           <input type="text" data-param="${key}" value="${val}"></label>`;
       }
@@ -282,6 +412,12 @@ export class EventSheetPanel {
     return `<span class="es-param-unknown">?</span>`;
   }
 
+  _escapeAttr(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
   // ============================================================
   // DnD
   // ============================================================
@@ -289,7 +425,9 @@ export class EventSheetPanel {
   _attachDnD() {
     const c = this.container;
 
+    // ---------- dragstart ----------
     c.addEventListener('dragstart', (e) => {
+      // 1) Строка условия/действия — как было.
       const row = e.target.closest('.es-row');
       if (row) {
         e.dataTransfer.effectAllowed = 'move';
@@ -302,75 +440,112 @@ export class EventSheetPanel {
         return;
       }
 
-      const ev = e.target.closest('.es-event');
-      if (ev) {
-        if (e.target.closest('.es-head-actions') ||
-            e.target.closest('.es-head-enable') ||
-            e.target.closest('.es-row') ||
-            e.target.closest('input, select, button')) {
-          e.preventDefault();
-          return;
-        }
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('application/x-es-event', String(ev.dataset.eventId));
-        ev.classList.add('dragging');
-      }
+      // 2) Ручка элемента (event / group / comment).
+      const handle = e.target.closest('.es-element-drag');
+      if (!handle) return;
+
+      const el = handle.closest('[data-element-id]');
+      if (!el) return;
+
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('application/x-es-element', String(el.dataset.elementId));
+      el.classList.add('dragging');
     });
 
+    // ---------- dragend ----------
     c.addEventListener('dragend', () => {
       for (const el of c.querySelectorAll('.dragging'))
         el.classList.remove('dragging');
-      for (const el of c.querySelectorAll('.drag-over'))
-        el.classList.remove('drag-over');
-    });
-
-    c.addEventListener('dragover', (e) => {
-      const kinds = e.dataTransfer.types;
-      const isAdd   = kinds.includes('application/x-es-add');
-      const isRow   = kinds.includes('application/x-es-row');
-      const isEvent = kinds.includes('application/x-es-event');
-      if (!isAdd && !isRow && !isEvent) return;
-
-      const section = e.target.closest('.es-section');
-      if (section && (isAdd || isRow)) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = isAdd ? 'copy' : 'move';
-        this._clearDropHighlight();
-        section.classList.add('drag-over');
-        return;
-      }
-
-      const ev = e.target.closest('.es-event');
-      if (ev && isEvent) {
-        const dragged = c.querySelector('.dragging');
-        if (dragged && dragged !== ev) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          this._clearDropHighlight();
-          ev.classList.add('drag-over');
-          return;
-        }
-      }
-
-      // Над невалидной целью — снимаем залипшую подсветку.
       this._clearDropHighlight();
     });
 
-    // Снимаем подсветку только когда курсор реально покидает элемент,
-    // а не переходит между его дочерними узлами.
+    // ---------- dragover ----------
+    c.addEventListener('dragover', (e) => {
+      const kinds = e.dataTransfer.types;
+      const isAdd     = kinds.includes('application/x-es-add');
+      const isRow     = kinds.includes('application/x-es-row');
+      const isElement = kinds.includes('application/x-es-element');
+      if (!isAdd && !isRow && !isElement) return;
+
+      // === строка условия/действия или палитра ===
+      if (isAdd || isRow) {
+        const section = e.target.closest('.es-section');
+        if (section) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = isAdd ? 'copy' : 'move';
+          this._clearDropHighlight();
+          section.classList.add('drag-over');
+        } else {
+          this._clearDropHighlight();
+        }
+        return;
+      }
+
+      // === элемент (event / group / comment) ===
+      const draggingId = this._getDraggingId();
+      if (draggingId == null) return;
+
+      const targetEl  = e.target.closest('[data-element-id]');
+      const groupBody = e.target.closest('.es-group-body');
+
+      // Пустое место внутри группы = вставить в конец группы.
+      if (!targetEl) {
+        if (groupBody) {
+          const gId = +groupBody.dataset.groupId;
+          if (gId === draggingId) return;
+          if (this._isDescendant(draggingId, gId)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          this._clearDropHighlight();
+          const g = groupBody.closest('.es-group');
+          if (g) g.classList.add('drop-inside');
+        } else {
+          this._clearDropHighlight();
+        }
+        return;
+      }
+
+      const targetId = +targetEl.dataset.elementId;
+      if (targetId === draggingId) return;
+      if (this._isDescendant(draggingId, targetId)) return;
+
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      this._clearDropHighlight();
+
+      const rect  = targetEl.getBoundingClientRect();
+      const ratio = (e.clientY - rect.top) / rect.height;
+
+      const isGroup = targetEl.classList.contains('es-group');
+
+      // Группа: 30% сверху — before, 30% снизу — after, 40% в середине — inside.
+      if (isGroup && ratio >= 0.3 && ratio <= 0.7) {
+        targetEl.classList.add('drop-inside');
+        return;
+      }
+
+      if (ratio < 0.5) targetEl.classList.add('drop-before');
+      else             targetEl.classList.add('drop-after');
+    });
+
+    // ---------- dragleave ----------
     c.addEventListener('dragleave', (e) => {
-      const el = e.target.closest('.es-section, .es-event');
+      const el = e.target.closest(
+        '.es-section, .es-event, .es-group, .es-comment'
+      );
       if (!el) return;
       const to = e.relatedTarget;
       if (to && el.contains(to)) return;
-      el.classList.remove('drag-over');
+      el.classList.remove('drag-over', 'drop-before', 'drop-after', 'drop-inside');
     });
 
+    // ---------- drop ----------
     c.addEventListener('drop', (e) => {
       const kinds = e.dataTransfer.types;
-      const section = e.target.closest('.es-section');
 
-      if (kinds.includes('application/x-es-add') && section) {
+      if (kinds.includes('application/x-es-add')) {
+        const section = e.target.closest('.es-section');
+        if (!section) return;
         e.preventDefault();
         const data = JSON.parse(e.dataTransfer.getData('application/x-es-add'));
         const eventId = +section.dataset.eventId;
@@ -380,7 +555,9 @@ export class EventSheetPanel {
         return;
       }
 
-      if (kinds.includes('application/x-es-row') && section) {
+      if (kinds.includes('application/x-es-row')) {
+        const section = e.target.closest('.es-section');
+        if (!section) return;
         e.preventDefault();
         const data = JSON.parse(e.dataTransfer.getData('application/x-es-row'));
         const toEventId = +section.dataset.eventId;
@@ -393,21 +570,53 @@ export class EventSheetPanel {
         return;
       }
 
-      if (kinds.includes('application/x-es-event')) {
-        const targetEv = e.target.closest('.es-event');
-        if (!targetEv) return;
-        e.preventDefault();
-        const fromId = +e.dataTransfer.getData('application/x-es-event');
-        const toId   = +targetEv.dataset.eventId;
-        if (fromId !== toId) this._reorderEvent(fromId, toId);
-        this._clearDropHighlight();
+      if (!kinds.includes('application/x-es-element')) return;
+      e.preventDefault();
+
+      const fromId = +e.dataTransfer.getData('application/x-es-element');
+
+      const inside = c.querySelector('.drop-inside');
+      const before = c.querySelector('.drop-before');
+      const after  = c.querySelector('.drop-after');
+
+      if (inside) {
+        this._moveElement(fromId, { groupId: +inside.dataset.elementId });
+      } else if (before) {
+        this._moveElement(fromId, { targetId: +before.dataset.elementId, position: 'before' });
+      } else if (after) {
+        this._moveElement(fromId, { targetId: +after.dataset.elementId,  position: 'after'  });
       }
+
+      this._clearDropHighlight();
     });
   }
 
   _clearDropHighlight() {
-    for (const el of this.container.querySelectorAll('.drag-over'))
-      el.classList.remove('drag-over');
+    for (const el of this.container.querySelectorAll(
+      '.drag-over, .drop-before, .drop-after, .drop-inside'
+    )) {
+      el.classList.remove('drag-over', 'drop-before', 'drop-after', 'drop-inside');
+    }
+  }
+
+  _getDraggingId() {
+    const el = this.container.querySelector('.dragging');
+    if (!el || !el.dataset) return null;
+    return el.dataset.elementId ? +el.dataset.elementId : null;
+  }
+
+  /** true, если toId находится внутри поддерева fromId. */
+  _isDescendant(fromId, toId) {
+    const sheet = this._getSheet();
+    const fromEl = findElement(sheet, fromId);
+    if (!fromEl) return false;
+    const stack = [fromEl];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (cur.id === toId) return true;
+      if (cur.children) for (const c of cur.children) stack.push(c);
+    }
+    return false;
   }
 
   // ============================================================
@@ -471,23 +680,58 @@ export class EventSheetPanel {
     this.onChange();
   }
 
-  _reorderEvent(fromId, toId) {
+  /**
+   * Универсальное перемещение элемента (event / group / comment).
+   *
+   * target = { groupId }                     — в конец children группы
+   * target = { targetId, position: 'before'} — перед элементом
+   * target = { targetId, position: 'after' } — после элемента
+   */
+  _moveElement(fromId, target) {
+    const sheet = this._getSheet();
+    if (!sheet) return;
+
+    const from = findParentArray(sheet, fromId);
+    if (!from) return;
+
+    let toArr;
+    let toIdx;
+
+    if (target.groupId != null) {
+      const group = findElement(sheet, target.groupId);
+      if (!group || kindOf(group) !== GROUP) return;
+      toArr = group.children = group.children || [];
+      toIdx = toArr.length;
+    } else {
+      const to = findParentArray(sheet, target.targetId);
+      if (!to) return;
+      toArr = to.arr;
+      toIdx = target.position === 'before' ? to.idx : to.idx + 1;
+    }
+
+    // Запрет на перемещение в свою же позицию.
+    if (toArr === from.arr && (toIdx === from.idx || toIdx === from.idx + 1)) return;
+
     const h = this.history;
     const apply = () => {
-      const sheet = this._getSheet();
-      const from = this._findParentArray(sheet, fromId);
-      const to   = this._findParentArray(sheet, toId);
-      if (!from || !to) return;
-      if (from.arr !== to.arr) return;
+      // Повторно находим — на случай, если snapshotFn уже вызван.
+      const from2 = findParentArray(sheet, fromId);
+      if (!from2) return;
 
-      // Ссылку на целевое событие берём ДО splice — иначе to.idx устареет.
-      const target = to.arr[to.idx];
+      const [el] = from2.arr.splice(from2.idx, 1);
 
-      const [ev] = from.arr.splice(from.idx, 1);
-      const newTo = from.arr.indexOf(target);
-      from.arr.splice(newTo >= 0 ? newTo : to.idx, 0, ev);
+      let adjIdx = toIdx;
+      if (from2.arr === toArr && from2.idx < toIdx) adjIdx--;
+
+      toArr.splice(adjIdx, 0, el);
+
+      // Если переместили внутрь группы — раскрыть её, чтобы результат был виден.
+      if (target.groupId != null) {
+        const g = findElement(sheet, target.groupId);
+        if (g) g.collapsed = false;
+      }
     };
-    if (h) h.run('Reorder event', apply); else apply();
+    if (h) h.run('Move element', apply); else apply();
 
     this._recompile();
     this.refresh();
@@ -498,18 +742,43 @@ export class EventSheetPanel {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     const action = btn.dataset.action;
+
+    // --- группа / комментарий: element-scope ---
+    const elementEl = btn.closest('[data-element-id]');
+    const elementId = elementEl ? +elementEl.dataset.elementId : null;
+
+    switch (action) {
+      case 'add-event':        this._addEvent(null, null); break;
+      case 'add-group':        this._addGroup(null); break;
+      case 'add-comment':      this._addComment(null); break;
+
+      case 'toggle-group-collapse': {
+        const g = this._findElement(elementId);
+        if (!g) return;
+        this._toggleGroupCollapsed(g);
+        return;
+      }
+      case 'add-group-event':  this._addEvent(null, elementId); break;
+      case 'delete-group':     this._confirmDelete('group', elementId); return;
+
+      case 'delete-comment':   this._deleteComment(elementId); return;
+      case 'set-comment-color': {
+        const color = btn.dataset.color;
+        this._setCommentColor(elementId, color);
+        return;
+      }
+    }
+
+    // --- событие: прежние действия ---
     const eventEl = btn.closest('.es-event');
     const eventId = eventEl ? +eventEl.dataset.eventId : null;
 
     switch (action) {
-      case 'add-event':     this._addEvent(null); break;
       case 'add-condition': this._openPopover(btn, 'conditions', eventId); break;
       case 'add-action':    this._openPopover(btn, 'actions', eventId); break;
-      case 'add-child':     this._addEvent(eventId); break;
+      case 'add-child':     this._addEvent(eventId, null); break;
       case 'duplicate':     this._duplicateEvent(eventId); break;
-      case 'delete':
-        this._confirmDeleteEvent(eventId);
-        return;
+      case 'delete':        this._confirmDelete('event', eventId); return;
       case 'del-condition': {
         const row = btn.closest('.es-row');
         this._deleteRow(eventId, 'cond', +row.dataset.rowUid);
@@ -520,6 +789,30 @@ export class EventSheetPanel {
         this._deleteRow(eventId, 'action', +row.dataset.rowUid);
         break;
       }
+    }
+  }
+
+  _onKeydown(e) {
+    const el = e.target;
+    if (!el) return;
+    if (e.key === 'Enter' && el.classList) {
+      if (el.classList.contains('es-group-name')) {
+        e.preventDefault(); el.blur();
+      }
+    }
+  }
+
+  _onBlur(e) {
+    const el = e.target;
+    if (!el || !el.classList) return;
+
+    if (el.classList.contains('es-group-name')) {
+      this._commitGroupName(el);
+      return;
+    }
+    if (el.classList.contains('es-comment-text')) {
+      this._commitCommentText(el);
+      return;
     }
   }
 
@@ -581,13 +874,28 @@ export class EventSheetPanel {
       return;
     }
 
+    if (e.target.matches('[data-action="toggle-group-enable"]')) {
+      const wrap = e.target.closest('.es-group');
+      const groupId = +wrap.dataset.elementId;
+      const h = this.history;
+      const apply = () => {
+        const g = this._findElement(groupId);
+        if (!g) return;
+        g.disabled = !e.target.checked;
+      };
+      if (h) h.run('Toggle group', apply); else apply();
+      const g = this._findElement(groupId);
+      if (g) wrap.classList.toggle('disabled', !!g.disabled);
+      this._recompile();
+      this.onChange();
+      return;
+    }
+
     const sel = e.target.closest('select[data-param]');
     if (!sel) return;
     this._applyParam(sel);
   }
 
-  // Параметры (числа/строки/селекты) НЕ оборачиваем в undo —
-  // иначе при вводе числа в поле каждая цифра станет отдельной командой.
   _applyParam(el) {
     const key = el.dataset.param;
     const [kind, uidStr, paramId] = key.split(':');
@@ -613,19 +921,28 @@ export class EventSheetPanel {
     this.onChange();
   }
 
-  _addEvent(parentId) {
+  // --- event CRUD ---
+
+  _addEvent(parentEventId, parentGroupId) {
     const h = this.history;
     const apply = () => {
       const sheet = this._getSheet();
-      const id = this._nextId(sheet);
+      const id = nextId(sheet);
       const ev = { id, conditions: [], actions: [], children: [], disabled: false };
 
-      if (parentId === null) sheet.events.push(ev);
-      else {
-        const parent = this._findEvent(parentId);
+      if (parentEventId != null) {
+        const parent = this._findEvent(parentEventId);
         if (!parent) return;
         parent.children = parent.children || [];
         parent.children.push(ev);
+      } else if (parentGroupId != null) {
+        const g = this._findElement(parentGroupId);
+        if (!g || kindOf(g) !== GROUP) return;
+        g.children = g.children || [];
+        g.children.push(ev);
+        g.collapsed = false;
+      } else {
+        sheet.events.push(ev);
       }
     };
     if (h) h.run('Add event', apply); else apply();
@@ -633,6 +950,37 @@ export class EventSheetPanel {
     this._recompile();
     this.refresh();
     this.onChange();
+
+    // Первый раз, когда у пользователя становится 2 top-level события —
+    // показываем подсказку о том, что порядок влияет на выполнение.
+    if (parentEventId == null && parentGroupId == null) {
+      this._maybeShowOrderHint();
+    }
+  }
+
+  _maybeShowOrderHint() {
+    const sheet = this._getSheet();
+    if (!sheet) return;
+
+    // Считаем только top-level события — группы и комментарии не в счёт.
+    const count = sheet.events.filter((el) => (el._type || 'event') === 'event').length;
+    if (count < 2) return;
+
+    showHintOnce(this.project, 'eventOrder', () => {
+      Modal.alert({
+        title: 'Порядок событий важен',
+        message:
+          'События выполняются сверху вниз — в том порядке, в котором они ' +
+          'находятся в списке.\n\n' +
+          'Это влияет на результат, если события меняют одни и те же ' +
+          'переменные, свойства объектов или срабатывают на одно и то же ' +
+          'условие. Верхнее событие всегда выполняется раньше нижнего.\n\n' +
+          'Меняйте порядок перетаскиванием за ручку ⠿ слева от события, ' +
+          'группы или комментария.\n\n' +
+          'Отключить все подсказки можно во вкладке «Проект» → «Помощь».',
+        okText: 'Понятно',
+      });
+    });
   }
 
   _duplicateEvent(eventId) {
@@ -643,10 +991,10 @@ export class EventSheetPanel {
       if (!original) return;
 
       const clone = JSON.parse(JSON.stringify(original));
-      this._reassignEventIds(clone, { next: this._nextId(sheet) });
+      this._reassignEventIds(clone, { next: nextId(sheet) });
       this._clearUids(clone);
 
-      const insertion = this._findParentArray(sheet, eventId);
+      const insertion = findParentArray(sheet, eventId);
       if (!insertion) return;
       insertion.arr.splice(insertion.idx + 1, 0, clone);
     };
@@ -657,27 +1005,32 @@ export class EventSheetPanel {
     this.onChange();
   }
 
-  async _confirmDeleteEvent(eventId) {
+  async _confirmDelete(kind, id) {
+    const messages = {
+      event: 'Событие и все его условия, действия и дочерние события будут удалены.',
+      group: 'Группа и все события внутри неё будут удалены.',
+    };
+    const titles = {
+      event: 'Удалить событие',
+      group: 'Удалить группу',
+    };
     const ok = await Modal.confirm({
-      title: 'Удалить событие',
-      message: 'Событие и все его условия, действия и дочерние события будут удалены.',
+      title: titles[kind] || 'Удалить',
+      message: messages[kind] || '',
       okText: 'Удалить',
       cancelText: 'Отмена',
       danger: true,
     });
     if (!ok) return;
-    this._deleteEvent(eventId);
-  }
 
-  _deleteEvent(eventId) {
     const h = this.history;
     const apply = () => {
       const sheet = this._getSheet();
-      const insertion = this._findParentArray(sheet, eventId);
+      const insertion = findParentArray(sheet, id);
       if (!insertion) return;
       insertion.arr.splice(insertion.idx, 1);
     };
-    if (h) h.run('Delete event', apply); else apply();
+    if (h) h.run('Delete ' + kind, apply); else apply();
 
     this._recompile();
     this.refresh();
@@ -702,6 +1055,133 @@ export class EventSheetPanel {
     this.onChange();
   }
 
+  // --- group ---
+
+  _addGroup(parentGroupId) {
+    const h = this.history;
+    const apply = () => {
+      const sheet = this._getSheet();
+      const id = nextId(sheet);
+      const group = {
+        id, _type: 'group',
+        name: 'Группа ' + id,
+        collapsed: false,
+        disabled: false,
+        children: [],
+      };
+
+      if (parentGroupId != null) {
+        const g = this._findElement(parentGroupId);
+        if (!g || kindOf(g) !== GROUP) return;
+        g.children = g.children || [];
+        g.children.push(group);
+        g.collapsed = false;
+      } else {
+        sheet.events.push(group);
+      }
+    };
+    if (h) h.run('Add group', apply); else apply();
+
+    this._recompile();
+    this.refresh();
+    this.onChange();
+  }
+
+  _toggleGroupCollapsed(group) {
+    const h = this.history;
+    const apply = () => { group.collapsed = !group.collapsed; };
+    if (h) h.run('Toggle group', apply); else apply();
+
+    this.refresh();
+    this.onChange();
+  }
+
+  _commitGroupName(input) {
+    const wrap = input.closest('.es-group');
+    if (!wrap) return;
+    const group = this._findElement(+wrap.dataset.elementId);
+    if (!group) return;
+
+    const newName = String(input.value || '').trim() || 'Группа';
+    if (group.name === newName) return;
+
+    const h = this.history;
+    const apply = () => { group.name = newName; };
+    if (h) h.run('Rename group', apply); else apply();
+
+    input.value = newName;
+    this.onChange();
+  }
+
+  // --- comment ---
+
+  _addComment(parentGroupId) {
+    const h = this.history;
+    const apply = () => {
+      const sheet = this._getSheet();
+      const id = nextId(sheet);
+      const c = {
+        id, _type: 'comment',
+        text: 'Новый комментарий',
+        color: 'yellow',
+      };
+      if (parentGroupId != null) {
+        const g = this._findElement(parentGroupId);
+        if (!g || kindOf(g) !== GROUP) return;
+        g.children = g.children || [];
+        g.children.push(c);
+      } else {
+        sheet.events.push(c);
+      }
+    };
+    if (h) h.run('Add comment', apply); else apply();
+
+    this.refresh();
+    this.onChange();
+  }
+
+  _deleteComment(id) {
+    const h = this.history;
+    const apply = () => {
+      const sheet = this._getSheet();
+      const insertion = findParentArray(sheet, id);
+      if (!insertion) return;
+      insertion.arr.splice(insertion.idx, 1);
+    };
+    if (h) h.run('Delete comment', apply); else apply();
+
+    this.refresh();
+    this.onChange();
+  }
+
+  _setCommentColor(id, color) {
+    const c = this._findElement(id);
+    if (!c || kindOf(c) !== COMMENT) return;
+    if (c.color === color) return;
+
+    const h = this.history;
+    const apply = () => { c.color = color; };
+    if (h) h.run('Comment color', apply); else apply();
+
+    this.refresh();
+    this.onChange();
+  }
+
+  _commitCommentText(el) {
+    const id = +el.dataset.commentText;
+    const c = this._findElement(id);
+    if (!c || kindOf(c) !== COMMENT) return;
+
+    const newText = el.textContent || '';
+    if (c.text === newText) return;
+
+    const h = this.history;
+    const apply = () => { c.text = newText; };
+    if (h) h.run('Edit comment', apply); else apply();
+
+    this.onChange();
+  }
+
   // ============================================================
   // HELPERS
   // ============================================================
@@ -709,40 +1189,27 @@ export class EventSheetPanel {
   _findEvent(id, list) {
     const sheet = this._getSheet();
     list = list || sheet.events;
-    for (const ev of list) {
-      if (ev.id === id) return ev;
-      if (ev.children && ev.children.length) {
-        const f = this._findEvent(id, ev.children);
+    for (const el of list) {
+      if (kindOf(el) !== EVENT) {
+        if (el.children && el.children.length) {
+          const f = this._findEvent(id, el.children);
+          if (f) return f;
+        }
+        continue;
+      }
+      if (el.id === id) return el;
+      if (el.children && el.children.length) {
+        const f = this._findEvent(id, el.children);
         if (f) return f;
       }
     }
     return null;
   }
 
-  _findParentArray(sheet, id) {
-    const walk = (arr) => {
-      for (let i = 0; i < arr.length; i++) {
-        if (arr[i].id === id) return { arr, idx: i };
-        if (arr[i].children && arr[i].children.length) {
-          const r = walk(arr[i].children);
-          if (r) return r;
-        }
-      }
-      return null;
-    };
-    return walk(sheet.events);
-  }
-
-  _nextId(sheet) {
-    let max = 0;
-    const walk = (arr) => {
-      for (const ev of arr) {
-        if (ev.id > max) max = ev.id;
-        if (ev.children) walk(ev.children);
-      }
-    };
-    walk(sheet.events);
-    return max + 1;
+  _findElement(id) {
+    const sheet = this._getSheet();
+    if (!sheet) return null;
+    return findElement(sheet, id);
   }
 
   _reassignEventIds(event, counter) {

@@ -4,8 +4,9 @@
  * Формат .pride:
  *   [6 байт "PRIDE1"] [1 байт version=1] [gzip-сжатый JSON UTF-8]
  *
- * JSON (version 4):
- *   { version, scene, sheet, varsInitial, gravityX, gravityY }
+ * JSON (version 5):
+ *   { version, scene, sheet, varsInitial,
+ *     name, canvasWidth, canvasHeight, bgColor, gravityX, gravityY }
  */
 
 const MAGIC = 'PRIDE1';
@@ -13,23 +14,31 @@ const CONTAINER_VERSION = 1;
 
 export function packProject(project) {
   return {
-    version: 4,
-    scene:       project.scene.toJSON(),
-    sheet:       project.sheet,
-    varsInitial: project.varsInitial || {},
-    gravityX:    project.gravityX ?? 0,
-    gravityY:    project.gravityY ?? 980,
+    version: 5,
+    scene:        project.scene.toJSON(),
+    sheet:        project.sheet,
+    varsInitial:  project.varsInitial || {},
+    name:         project.name        || 'Pride Project',
+    canvasWidth:  project.canvasWidth  ?? 1024,
+    canvasHeight: project.canvasHeight ?? 640,
+    bgColor:      project.bgColor     || '#333333',
+    gravityX:     project.gravityX ?? 0,
+    gravityY:     project.gravityY ?? 980,
   };
 }
 
 export function unpackProject(data, scene) {
   scene.fromJSON(data.scene);
   return {
-    sheet:       data.sheet || null,
-    vars:        { ...(data.varsInitial || {}) },
-    varsInitial: { ...(data.varsInitial || {}) },
-    gravityX:    data.gravityX ?? 0,
-    gravityY:    data.gravityY ?? 980,
+    sheet:        data.sheet || null,
+    vars:         { ...(data.varsInitial || {}) },
+    varsInitial:  { ...(data.varsInitial || {}) },
+    name:         data.name        || 'Pride Project',
+    canvasWidth:  data.canvasWidth  ?? 1024,
+    canvasHeight: data.canvasHeight ?? 640,
+    bgColor:      data.bgColor     || '#333333',
+    gravityX:     data.gravityX ?? 0,
+    gravityY:     data.gravityY ?? 980,
   };
 }
 

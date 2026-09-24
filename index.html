@@ -3,15 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <title>Pride Engine — Редактор</title>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('pride.theme.v1') || 'dark';
+      if (t !== 'light' && t !== 'dark') t = 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
 <div id="app">
-    <header id="topbar">
+  <header id="topbar">
     <span class="brand">Pride Engine</span>
 
     <button id="btn-shortcuts" title="Горячие клавиши (F1)" aria-label="Горячие клавиши">
       <svg class="icon"><use href="#icon-help"/></svg>
+    </button>
+
+    <button id="btn-theme" class="topbtn" title="Светлая / тёмная тема" aria-label="Переключить тему">
+      <svg class="icon"><use href="#icon-sun"/></svg>
     </button>
 
     <div class="topbar-group">
@@ -62,6 +77,7 @@
       </button>
     </div>
 
+    <span class="stage">Этап 7 — UX / Themes / Templates</span>
   </header>
 
   <div id="main">
@@ -84,6 +100,7 @@
       <div id="view-tabs">
         <button class="vtab active" data-tab="layout">Сцена</button>
         <button class="vtab"        data-tab="event-sheet">События</button>
+        <button class="vtab"        data-tab="settings">Проект</button>
       </div>
 
       <canvas id="pride-canvas" width="1024" height="640"></canvas>
@@ -93,6 +110,10 @@
         <aside id="event-palette"></aside>
         <div id="event-sheet-main"></div>
         <aside id="vars-panel"></aside>
+      </div>
+
+      <div id="project-settings-view" hidden>
+        <div id="project-settings-panel"></div>
       </div>
     </div>
 

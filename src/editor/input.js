@@ -219,8 +219,12 @@ export class EditorController {
         return;
       }
 
-      const tag = document.activeElement && document.activeElement.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      // Не вмешиваемся, если фокус в поле ввода, textarea или в
+      // contenteditable-элементе (текст комментария event sheet).
+      const el = document.activeElement;
+      if (!el) return;
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable) return;
 
       const mod = e.ctrlKey || e.metaKey;
 

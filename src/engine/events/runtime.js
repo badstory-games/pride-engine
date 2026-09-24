@@ -14,14 +14,33 @@ export class EventRuntime {
   }
 
   compile() {
-    this.program = (this.sheet && this.sheet.events || [])
-      .map((e) => this._compileEvent(e));
+    const flat = [];
+    this._flatten(this.sheet && this.sheet.events || [], false, flat);
+    this.program = flat.map(({ event, disabled }) =>
+      this._compileEvent(event, disabled)
+    );
   }
 
-  _compileEvent(event) {
+  /** Рекурсивно собирает события, учитывая disabled групп. */
+  _flatten(arr, parentDisabled, out) {
+    for (const el of arr) {
+      const k = el._type || 'event';
+      if (k === 'comment') continue;
+
+      if (k === 'group') {
+        const groupDisabled = parentDisabled || !!el.disabled;
+        this._flatten(el.children || [], groupDisabled, out);
+        continue;
+      }
+
+      out.push({ event: el, disabled: parentDisabled || !!el.disabled });
+    }
+  }
+
+  _compileEvent(event, parentDisabled) {
     const node = {
       id: event.id,
-      disabled: !!event.disabled,
+      disabled: !!event.disabled || !!parentDisabled,
       conditions: [],
       actions: [],
       children: [],
@@ -55,7 +74,7 @@ export class EventRuntime {
       }
     }
 
-    node.children = (event.children || []).map((c) => this._compileEvent(c));
+    node.children = (event.children || []).map((c) => this._compileEvent(c, false));
     return node;
   }
 
@@ -68,7 +87,6 @@ export class EventRuntime {
   _run(node, ctx) {
     if (node.disabled) return;
 
-    // --- 1) Оцениваем ВСЕ non-once условия ---
     let pass = true;
     for (let i = 0; i < node.conditions.length; i++) {
       const c = node.conditions[i];
@@ -76,8 +94,6 @@ export class EventRuntime {
       if (!c.fn(ctx)) { pass = false; break; }
     }
 
-    // --- 2) Любое non-once условие ложно → сбрасываем once-флаги.
-    //         Только в этот момент TriggerOnce "взводится" заново.
     if (!pass) {
       for (let i = 0; i < node.conditions.length; i++) {
         if (node.conditions[i].once) node._once[i] = false;
@@ -85,13 +101,10 @@ export class EventRuntime {
       return;
     }
 
-    // --- 3) Все non-once условия истинны. Если хоть один once уже
-    //         сработал — выходим БЕЗ сброса (иначе сработаем через кадр).
     for (let i = 0; i < node.conditions.length; i++) {
       if (node.conditions[i].once && node._once[i]) return;
     }
 
-    // --- 4) Срабатываем, взводим once-флаги ---
     for (let i = 0; i < node.conditions.length; i++) {
       if (node.conditions[i].once) node._once[i] = true;
     }

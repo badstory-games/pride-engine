@@ -10,9 +10,11 @@ export class Renderer {
     this.texture = null;
     this.uniformData = new Float32Array(16);
 
-    // Кэши, живущие весь сеанс рендерера.
     this._bgl = null;
-    this._bindGroupCache = new Map();   // GPUTexture → GPUBindGroup
+    this._bindGroupCache = new Map();
+
+    // Цвет очистки канваса. Значения 0..1.
+    this.clearColor = { r: 0.2, g: 0.2, b: 0.2, a: 1.0 };
   }
 
   async init(canvas) {
@@ -91,6 +93,13 @@ export class Renderer {
     });
   }
 
+  setClearColor(r, g, b, a = 1) {
+    this.clearColor.r = r;
+    this.clearColor.g = g;
+    this.clearColor.b = b;
+    this.clearColor.a = a;
+  }
+
   // Матрица проекции пишется извне через camera.writeMatrix(m, W, H),
   // затем вызывающий код сам делает writeBuffer. Renderer её не трогает.
 
@@ -122,7 +131,7 @@ export class Renderer {
     const renderPass = commandEncoder.beginRenderPass({
       colorAttachments: [{
         view: textureView,
-        clearValue: { r: 0.2, g: 0.2, b: 0.2, a: 1.0 },
+        clearValue: { ...this.clearColor },
         loadOp: 'clear',
         storeOp: 'store',
       }],

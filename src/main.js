@@ -26,8 +26,11 @@ import { EventSheetPanel } from './editor/event-sheet-panel.js';
 import { EventPalette }     from './editor/event-palette.js';
 import { VarsPanel } from './editor/vars-panel.js';
 import { History } from './editor/history.js';
-import { Clipboard } from './editor/clipboard.js';
 import { PerfOverlay } from './editor/perf-overlay.js';
+import { Clipboard } from './editor/clipboard.js';
+import { TemplateModal } from './editor/template-modal.js';
+import { getTemplate } from './editor/templates.js';
+import { ProjectSettings } from './editor/project-settings.js';
 import { runBenchmark, formatResults } from './editor/benchmark.js';
 
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
@@ -36,11 +39,11 @@ import { downloadBytes, downloadText, pickFile, readFileBytes } from './project/
 import { exportWebGame } from './export/exporter.js';
 import { Modal } from './editor/modal.js';
 import { initIcons } from './editor/icons.js';
-import { TemplateModal } from './editor/template-modal.js';
-import { getTemplate } from './editor/templates.js';
+import { initTheme, getTheme, toggleTheme } from './editor/theme.js';
 
 async function main() {
   initIcons();
+  initTheme();
 
   registerConditions();
   registerActions();
@@ -59,7 +62,6 @@ async function main() {
 
   const assets = new AssetManager(renderer.device);
 
-  // 1×1 белая
   {
     const img = new ImageData(1, 1);
     img.data.set([255, 255, 255, 255]);
@@ -67,7 +69,6 @@ async function main() {
     assets.loadFromBitmap('__white', bmp);
   }
 
-  // player.png
   try {
     const a = await assets.loadPNG('player', './assets/player.png');
     console.log(`[assets] player.png ${a.width}×${a.height}`);
@@ -94,8 +95,13 @@ async function main() {
   const project = {
     scene, sheet: null,
     vars: {}, varsInitial: {},
+    name: 'Pride Project',
+    canvasWidth:  canvas.width,
+    canvasHeight: canvas.height,
+    bgColor: '#333333',
     gravityX: 0,
     gravityY: 980,
+    hintsShown: {},
   };
   const editor  = new Editor(scene);
   const controller = new EditorController(canvas, camera, editor);
@@ -108,20 +114,58 @@ async function main() {
 
   const perfOverlay = new PerfOverlay(document.getElementById('canvas-wrap'));
 
+  // --- Применение настроек проекта ---
+
+  function hexToRgb01(hex) {
+    const clean = String(hex).replace(/^#/, '');
+    const n = parseInt(clean, 16);
+    return {
+      r: ((n >> 16) & 0xff) / 255,
+      g: ((n >>  8) & 0xff) / 255,
+      b: ( n        & 0xff) / 255,
+    };
+  }
+
+  function applyCanvasSize(w, h) {
+    if (canvas.width !== w)   canvas.width = w;
+    if (canvas.height !== h)  canvas.height = h;
+    camera.x = w / 2;
+    camera.y = h / 2;
+  }
+
+  function applyBgColor(hex) {
+    const { r, g, b } = hexToRgb01(hex);
+    renderer.setClearColor(r, g, b, 1.0);
+  }
+
+  function applyGravity(gx, gy) {
+    bridge.setGravity(gx, gy);
+  }
+
   // --- Input ---
   const input = new InputState();
 
+  /**
+   * true, если фокус сейчас в поле ввода, textarea
+   * или в contenteditable-элементе (текст комментария event sheet).
+   * Тогда глобальные обработчики клавиш не должны вмешиваться.
+   */
+  function isEditableTarget() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable === true;
+  }
+
   window.addEventListener('keydown', (e) => {
-    const tag = document.activeElement && document.activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (isEditableTarget()) return;
     if (e.repeat) return;
     if (e.code === 'Space') e.preventDefault();
     input.press(e.code);
   });
 
   window.addEventListener('keyup', (e) => {
-    const tag = document.activeElement && document.activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (isEditableTarget()) return;
     input.release(e.code);
   });
 
@@ -143,12 +187,39 @@ async function main() {
   const layersPanel = new LayersPanel(
     document.getElementById('layers-panel'), editor, scene);
 
+  // --- Project settings ---
+  const projectSettings = new ProjectSettings(
+    document.getElementById('project-settings-panel'),
+    project,
+    {
+      onCanvasSizeChange: (w, h) => applyCanvasSize(w, h),
+      onBgColorChange:    (hex)  => applyBgColor(hex),
+      onGravityChange:    (gx, gy) => applyGravity(gx, gy),
+      onNameChange:       (name) => {
+        document.title = `Pride Engine — ${name}`;
+      },
+    }
+  );
+
   // --- Shortcuts modal ---
   const shortcutsModal = new ShortcutsModal();
   document.getElementById('btn-shortcuts')
     .addEventListener('click', () => shortcutsModal.toggle());
   controller.onToggleShortcuts = () => shortcutsModal.toggle();
   controller.isShortcutsOpen  = () => shortcutsModal.isOpen;
+
+  // --- Theme toggle ---
+  const btnTheme = document.getElementById('btn-theme');
+  function refreshThemeIcon() {
+    const t = getTheme();
+    btnTheme.innerHTML = `<svg class="icon"><use href="#icon-${t === 'dark' ? 'sun' : 'moon'}"/></svg>`;
+    btnTheme.title = t === 'dark' ? 'Светлая тема' : 'Тёмная тема';
+  }
+  btnTheme.addEventListener('click', () => {
+    toggleTheme();
+    refreshThemeIcon();
+  });
+  refreshThemeIcon();
 
   // --- Toolbar ---
   const toolButtons = document.querySelectorAll('.tool');
@@ -207,6 +278,11 @@ async function main() {
     scene.moveLayer(scene.layers[scene.layers.length - 1].id, -1);
     setIndicator('saved', '✓ ready');
   }
+
+  applyCanvasSize(project.canvasWidth, project.canvasHeight);
+  applyBgColor(project.bgColor);
+  applyGravity(project.gravityX, project.gravityY);
+  document.title = `Pride Engine — ${project.name}`;
 
   // --- Event sheet ---
   if (!project.sheet)       project.sheet       = defaultEventSheet();
@@ -277,10 +353,16 @@ async function main() {
 
   const history = new History({
     snapshotFn: () => structuredClone({
-      scene: scene.toJSON(),
-      sheet: project.sheet,
-      varsInitial: project.varsInitial,
-      selection: [...editor.selection],
+      scene:        scene.toJSON(),
+      sheet:        project.sheet,
+      varsInitial:  project.varsInitial,
+      selection:    [...editor.selection],
+      name:         project.name,
+      canvasWidth:  project.canvasWidth,
+      canvasHeight: project.canvasHeight,
+      bgColor:      project.bgColor,
+      gravityX:     project.gravityX,
+      gravityY:     project.gravityY,
     }),
     restoreFn: (state) => {
       const s = structuredClone(state);
@@ -288,6 +370,18 @@ async function main() {
       scene.fromJSON(s.scene);
       project.sheet       = s.sheet;
       project.varsInitial = s.varsInitial;
+
+      project.name         = s.name;
+      project.canvasWidth  = s.canvasWidth;
+      project.canvasHeight = s.canvasHeight;
+      project.bgColor      = s.bgColor;
+      project.gravityX     = s.gravityX;
+      project.gravityY     = s.gravityY;
+
+      applyCanvasSize(project.canvasWidth, project.canvasHeight);
+      applyBgColor(project.bgColor);
+      applyGravity(project.gravityX, project.gravityY);
+      document.title = `Pride Engine — ${project.name}`;
 
       editor.selection.clear();
       for (const id of s.selection) editor.selection.add(id);
@@ -297,6 +391,7 @@ async function main() {
       varsPanel.refresh();
       inspector.refresh();
       layersPanel.refresh();
+      projectSettings.refresh();
       scheduleSave();
     },
     limit: 100,
@@ -306,6 +401,9 @@ async function main() {
   editor.history          = history;
   varsPanel.history       = history;
   eventSheetPanel.history = history;
+  projectSettings.history = history;
+  projectSettings.onChange = () => scheduleSave();
+  projectSettings.refresh();
 
   function refreshUndoButtons() {
     if (!btnUndo || !btnRedo) return;
@@ -321,12 +419,20 @@ async function main() {
   history.init();
 
   // --- View tabs ---
-  const eventSheetView = document.getElementById('event-sheet-view');
+  const eventSheetView      = document.getElementById('event-sheet-view');
+  const projectSettingsView = document.getElementById('project-settings-view');
+
   const tabs = new Tabs(document.getElementById('view-tabs'), (id) => {
-    const isLayout = id === 'layout';
-    canvas.hidden = !isLayout;
-    eventSheetView.hidden = isLayout;
-    if (!isLayout) eventSheetPanel.refresh();
+    const isLayout   = id === 'layout';
+    const isEvents   = id === 'event-sheet';
+    const isSettings = id === 'settings';
+
+    canvas.hidden              = !isLayout;
+    eventSheetView.hidden      = !isEvents;
+    projectSettingsView.hidden = !isSettings;
+
+    if (isEvents)   eventSheetPanel.refresh();
+    if (isSettings) projectSettings.refresh();
   });
 
   // --- Topbar: Save / Load / New ---
@@ -354,7 +460,11 @@ async function main() {
       eventSheetPanel.refresh();
       varsPanel.refresh();
 
-      bridge.setGravity(project.gravityX, project.gravityY);
+      applyCanvasSize(project.canvasWidth, project.canvasHeight);
+      applyBgColor(project.bgColor);
+      applyGravity(project.gravityX, project.gravityY);
+      document.title = `Pride Engine — ${project.name}`;
+      projectSettings.refresh();
 
       setIndicator('saved', '✓ loaded');
       editor.onChange();
@@ -378,21 +488,31 @@ async function main() {
     project.sheet       = fresh.sheet;
     project.vars        = {};
     project.varsInitial = structuredClone(fresh.varsInitial || {});
-    project.gravityX    = fresh.gravityX ?? 0;
-    project.gravityY    = fresh.gravityY ?? 980;
 
-    bridge.setGravity(project.gravityX, project.gravityY);
+    project.name         = 'Pride Project';
+    project.canvasWidth  = 1024;
+    project.canvasHeight = 640;
+    project.bgColor      = '#333333';
+    project.gravityX     = fresh.gravityX ?? 0;
+    project.gravityY     = fresh.gravityY ?? 980;
+    project.hintsShown   = {};   // новый проект — подсказки покажем заново
+
+    applyCanvasSize(project.canvasWidth, project.canvasHeight);
+    applyBgColor(project.bgColor);
+    applyGravity(project.gravityX, project.gravityY);
+    document.title = `Pride Engine — ${project.name}`;
 
     eventRuntime.setSheet(project.sheet);
     eventSheetPanel.refresh();
     varsPanel.refresh();
+    projectSettings.refresh();
     editor.clearSelection();
     setIndicator('dirty', '● new');
     editor.onChange();
     history.init();
   });
 
-  // --- File I/O: .pride + export ---
+  // --- File I/O ---
 
   async function doSavePride() {
     try {
@@ -416,15 +536,23 @@ async function main() {
       project.sheet       = loaded.sheet || defaultEventSheet();
       project.vars        = loaded.vars;
       project.varsInitial = loaded.varsInitial;
+      project.name         = loaded.name;
+      project.canvasWidth  = loaded.canvasWidth;
+      project.canvasHeight = loaded.canvasHeight;
+      project.bgColor      = loaded.bgColor;
+      project.gravityX     = loaded.gravityX;
+      project.gravityY     = loaded.gravityY;
+      project.hintsShown   = {};   // открыт другой файл — подсказки заново
 
-      project.gravityX    = loaded.gravityX ?? 0;
-      project.gravityY    = loaded.gravityY ?? 980;
-
-      bridge.setGravity(project.gravityX, project.gravityY);
+      applyCanvasSize(project.canvasWidth, project.canvasHeight);
+      applyBgColor(project.bgColor);
+      applyGravity(project.gravityX, project.gravityY);
+      document.title = `Pride Engine — ${project.name}`;
 
       eventRuntime.setSheet(project.sheet);
       eventSheetPanel.refresh();
       varsPanel.refresh();
+      projectSettings.refresh();
       editor.clearSelection();
       editor.onChange();
       setIndicator('saved', '✓ .pride loaded');
@@ -444,7 +572,7 @@ async function main() {
     setIndicator('dirty', '● exporting…');
     try {
       const html = await exportWebGame(project, {
-        title: 'Pride Game',
+        title: project.name || 'Pride Game',
         debugDraw: false,
         assetManager: assets,
       });
@@ -494,7 +622,6 @@ async function main() {
       const results = await runBenchmark({
         scene, bridge, perfOverlay,
         setDebugDraw: (v) => {
-          console.log('[bench] setDebugDraw', v);   // ← добавить
           const prev = debugDraw;
           if (v !== null) {
             debugDraw = v;
@@ -553,7 +680,6 @@ async function main() {
 
       varsPanel.setRunning(true);
       varsPanel.refresh();
-      console.log('[play] bodies:', bridge.bodiesCount);
     } else if (bridge.paused) {
       bridge.resume();
     }
@@ -595,8 +721,7 @@ async function main() {
     if (e.code === 'F8') { e.preventDefault(); perfOverlay.toggle(); return; }
     if (e.code === 'F9') { e.preventDefault(); doBenchmark();      return; }
 
-    const tag = document.activeElement && document.activeElement.tagName;
-    const inField = tag === 'INPUT' || tag === 'TEXTAREA';
+    const inField = isEditableTarget();
 
     const mod = e.ctrlKey || e.metaKey;
 
@@ -612,26 +737,10 @@ async function main() {
     }
 
     if (mod && !inField) {
-      if (e.code === 'KeyC') {
-        e.preventDefault();
-        clipboard.copy(editor, scene);
-        return;
-      }
-      if (e.code === 'KeyX') {
-        e.preventDefault();
-        clipboard.cut(editor, scene);
-        return;
-      }
-      if (e.code === 'KeyV') {
-        e.preventDefault();
-        clipboard.paste(editor, scene);
-        return;
-      }
-      if (e.code === 'KeyD') {
-        e.preventDefault();
-        clipboard.duplicate(editor, scene);
-        return;
-      }
+      if (e.code === 'KeyC') { e.preventDefault(); clipboard.copy(editor, scene);      return; }
+      if (e.code === 'KeyX') { e.preventDefault(); clipboard.cut(editor, scene);       return; }
+      if (e.code === 'KeyV') { e.preventDefault(); clipboard.paste(editor, scene);     return; }
+      if (e.code === 'KeyD') { e.preventDefault(); clipboard.duplicate(editor, scene); return; }
     }
 
     if (mod && e.code === 'KeyS') { e.preventDefault(); doSavePride();  return; }
@@ -713,7 +822,6 @@ async function main() {
     overlayBatch.flush(renderPass);
 
     physicsBatch.begin();
-
     if (bridge.running && debugDraw) {
       renderer.setTexture(assets.get('__white').texture);
       renderPass.setBindGroup(0, renderer.bindGroup);

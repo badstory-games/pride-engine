@@ -3,13 +3,18 @@ const KEY = 'pride.project.v1';
 export function saveProject(project) {
   try {
     const payload = {
-      version: 4,
-      scene:       project.scene.toJSON(),
-      sheet:       project.sheet,
-      vars:        project.vars,
-      varsInitial: project.varsInitial,
-      gravityX:    project.gravityX ?? 0,
-      gravityY:    project.gravityY ?? 980,
+      version: 5,
+      scene:        project.scene.toJSON(),
+      sheet:        project.sheet,
+      vars:         project.vars,
+      varsInitial:  project.varsInitial,
+      name:         project.name        || 'Pride Project',
+      canvasWidth:  project.canvasWidth  ?? 1024,
+      canvasHeight: project.canvasHeight ?? 640,
+      bgColor:      project.bgColor     || '#333333',
+      gravityX:     project.gravityX ?? 0,
+      gravityY:     project.gravityY ?? 980,
+      hintsShown:   project.hintsShown || {},
     };
     localStorage.setItem(KEY, JSON.stringify(payload));
     return true;
@@ -30,16 +35,22 @@ export function loadProject(project) {
     let varsData    = data.vars;
     let initialData = data.varsInitial;
 
-    if (sceneData === undefined) sceneData = data;   // v1
-    if (varsData  === undefined) varsData = {};      // v1 / v2
+    if (sceneData   === undefined) sceneData   = data;
+    if (varsData    === undefined) varsData    = {};
     if (initialData === undefined) initialData = { ...varsData };
 
     project.scene.fromJSON(sceneData);
-    project.sheet = sheetData || null;
-    project.vars = { ...varsData };
+    project.sheet       = sheetData || null;
+    project.vars        = { ...varsData };
     project.varsInitial = { ...initialData };
-    project.gravityX = data.gravityX ?? 0;
-    project.gravityY = data.gravityY ?? 980;
+
+    project.name         = data.name        || 'Pride Project';
+    project.canvasWidth  = data.canvasWidth  ?? 1024;
+    project.canvasHeight = data.canvasHeight ?? 640;
+    project.bgColor      = data.bgColor     || '#333333';
+    project.gravityX     = data.gravityX ?? 0;
+    project.gravityY     = data.gravityY ?? 980;
+    project.hintsShown   = data.hintsShown || {};
 
     return true;
   } catch (e) {

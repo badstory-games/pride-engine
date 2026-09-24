@@ -171,11 +171,16 @@ function buildHtml({ title, importMap, project, assets, debugDraw }) {
   const projJson   = safe(project);
   const assetsJson = safe(assets);
 
+  // Размер канваса и имя проекта берём из самого project.
+  const canvasW = project.canvasWidth  ?? 1024;
+  const canvasH = project.canvasHeight ?? 640;
+  const pageTitle = project.name || title || 'Pride Game';
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>${escapeHtml(title)}</title>
+<title>${escapeHtml(pageTitle)}</title>
 <style>
   html, body { margin: 0; height: 100%; background: #1a1a1a; color: #ddd;
                font: 13px system-ui; overflow: hidden; }
@@ -191,7 +196,7 @@ function buildHtml({ title, importMap, project, assets, debugDraw }) {
 </style>
 </head>
 <body>
-<div id="wrap"><canvas id="pride-canvas" width="1024" height="640"></canvas></div>
+<div id="wrap"><canvas id="pride-canvas" width="${canvasW}" height="${canvasH}"></canvas></div>
 <div id="fps">FPS: --</div>
 
 <script type="importmap">

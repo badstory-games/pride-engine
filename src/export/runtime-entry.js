@@ -32,6 +32,10 @@ export async function startGame(projectData, assetsData, opts = {}) {
   const renderer = new Renderer();
   await renderer.init(canvas);
 
+  // Применяем цвет фона из проекта.
+  const bg = hexToRgb01(projectData.bgColor || '#333333');
+  renderer.setClearColor(bg.r, bg.g, bg.b, 1.0);
+
   const scene = new Scene();
   scene.fromJSON(projectData.scene);
 
@@ -154,4 +158,14 @@ export async function startGame(projectData, assetsData, opts = {}) {
   loop.start();
 
   return { renderer, scene, camera, bridge, runtime, loop };
+}
+
+function hexToRgb01(hex) {
+  const clean = String(hex).replace(/^#/, '');
+  const n = parseInt(clean, 16);
+  return {
+    r: ((n >> 16) & 0xff) / 255,
+    g: ((n >>  8) & 0xff) / 255,
+    b: ( n        & 0xff) / 255,
+  };
 }
