@@ -4,12 +4,12 @@ import { bodyMatchesTarget, findSceneObjectByName, forEachMatchingObject } from 
 export function registerActions() {
   // ---------- PHYSICS ----------
   registry.actions.register('ApplyImpulse', {
-    label: 'Apply impulse',
-    category: 'Physics',
+    label: 'Применить импульс',
+    category: 'Физика',
     params: [
-      { id: 'target', type: 'target', label: 'Target',    default: '*' },
-      { id: 'ix',     type: 'number', label: 'Impulse X', default: 0 },
-      { id: 'iy',     type: 'number', label: 'Impulse Y', default: -800 },
+      { id: 'target', type: 'target', label: 'Объект',    default: '*' },
+      { id: 'ix',     type: 'number', label: 'Импульс X', default: 0 },
+      { id: 'iy',     type: 'number', label: 'Импульс Y', default: -800 },
     ],
     compile: ({ target, ix, iy }) => (ctx) => {
       const store = ctx.world.bodies;
@@ -22,10 +22,10 @@ export function registerActions() {
   });
 
   registry.actions.register('SetVelocity', {
-    label: 'Set velocity',
-    category: 'Physics',
+    label: 'Задать скорость',
+    category: 'Физика',
     params: [
-      { id: 'target', type: 'target', label: 'Target', default: '*' },
+      { id: 'target', type: 'target', label: 'Объект', default: '*' },
       { id: 'vx',     type: 'number', label: 'VX',     default: 0 },
       { id: 'vy',     type: 'number', label: 'VY',     default: 0 },
     ],
@@ -41,10 +41,10 @@ export function registerActions() {
 
   // ---------- TRANSFORM ----------
   registry.actions.register('SetPosition', {
-    label: 'Set position',
-    category: 'Transform',
+    label: 'Задать позицию',
+    category: 'Трансформация',
     params: [
-      { id: 'target', type: 'target', label: 'Target', default: '*' },
+      { id: 'target', type: 'target', label: 'Объект', default: '*' },
       { id: 'x',      type: 'number', label: 'X',      default: 0 },
       { id: 'y',      type: 'number', label: 'Y',      default: 0 },
     ],
@@ -59,11 +59,11 @@ export function registerActions() {
   });
 
   registry.actions.register('SetVisible', {
-    label: 'Set visible',
-    category: 'Display',
+    label: 'Задать видимость',
+    category: 'Отображение',
     params: [
-      { id: 'target',  type: 'target', label: 'Target',  default: '*' },
-      { id: 'visible', type: 'select', label: 'Visible', default: 'false',
+      { id: 'target',  type: 'target', label: 'Объект',    default: '*' },
+      { id: 'visible', type: 'select', label: 'Видимость', default: 'false',
         options: ['true', 'false'] },
     ],
     compile: ({ target, visible }) => (ctx) => {
@@ -78,11 +78,11 @@ export function registerActions() {
   });
 
   registry.actions.register('SetOpacity', {
-    label: 'Set opacity',
-    category: 'Display',
+    label: 'Задать прозрачность',
+    category: 'Отображение',
     params: [
-      { id: 'target',  type: 'target', label: 'Target',  default: '*' },
-      { id: 'opacity', type: 'number', label: 'Opacity', default: 1,
+      { id: 'target',  type: 'target', label: 'Объект',       default: '*' },
+      { id: 'opacity', type: 'number', label: 'Прозрачность', default: 1,
         min: 0, max: 1, step: 0.05 },
     ],
     compile: ({ target, opacity }) => (ctx) => {
@@ -98,11 +98,11 @@ export function registerActions() {
 
   // ---------- SYSTEM ----------
   registry.actions.register('AddGlobalVar', {
-    label: 'Add to global variable',
-    category: 'System',
+    label: 'Прибавить к глобальной переменной',
+    category: 'Система',
     params: [
-      { id: 'name',  type: 'varname', label: 'Name',  default: 'score' },
-      { id: 'value', type: 'number',  label: 'Value', default: 1 },
+      { id: 'name',  type: 'varname', label: 'Имя',      default: 'score' },
+      { id: 'value', type: 'number',  label: 'Значение', default: 1 },
     ],
     compile: ({ name, value }) => (ctx) => {
       ctx.vars[name] = (ctx.vars[name] ?? 0) + value;
@@ -110,11 +110,11 @@ export function registerActions() {
   });
 
   registry.actions.register('SetGlobalVar', {
-    label: 'Set global variable',
-    category: 'System',
+    label: 'Задать глобальную переменную',
+    category: 'Система',
     params: [
-      { id: 'name',  type: 'varname', label: 'Name',  default: 'score' },
-      { id: 'value', type: 'number',  label: 'Value', default: 0 },
+      { id: 'name',  type: 'varname', label: 'Имя',      default: 'score' },
+      { id: 'value', type: 'number',  label: 'Значение', default: 0 },
     ],
     compile: ({ name, value }) => (ctx) => {
       ctx.vars[name] = value;
@@ -124,12 +124,12 @@ export function registerActions() {
   // ---------- INSTANCE VARIABLES ----------
 
   registry.actions.register('SetInstanceVar', {
-    label: 'Set instance variable',
-    category: 'Instance',
+    label: 'Задать переменную объекта',
+    category: 'Объект',
     params: [
-      { id: 'target', type: 'target',  label: 'Target',   default: '*' },
-      { id: 'var',    type: 'instvar', label: 'Variable', default: 'hp' },
-      { id: 'value',  type: 'number',  label: 'Value',    default: 0 },
+      { id: 'target', type: 'target',  label: 'Объект',     default: '*' },
+      { id: 'var',    type: 'instvar', label: 'Переменная', default: 'hp' },
+      { id: 'value',  type: 'number',  label: 'Значение',   default: 0 },
     ],
     compile: ({ target, var: name, value }) => (ctx) => {
       forEachMatchingObject(ctx, target, (obj) => {
@@ -140,12 +140,12 @@ export function registerActions() {
   });
 
   registry.actions.register('AddInstanceVar', {
-    label: 'Add to instance variable',
-    category: 'Instance',
+    label: 'Прибавить к переменной объекта',
+    category: 'Объект',
     params: [
-      { id: 'target', type: 'target',  label: 'Target',   default: '*' },
-      { id: 'var',    type: 'instvar', label: 'Variable', default: 'hp' },
-      { id: 'value',  type: 'number',  label: 'Value',    default: 1 },
+      { id: 'target', type: 'target',  label: 'Объект',     default: '*' },
+      { id: 'var',    type: 'instvar', label: 'Переменная', default: 'hp' },
+      { id: 'value',  type: 'number',  label: 'Значение',   default: 1 },
     ],
     compile: ({ target, var: name, value }) => (ctx) => {
       forEachMatchingObject(ctx, target, (obj) => {
@@ -156,12 +156,12 @@ export function registerActions() {
   });
 
   registry.actions.register('SubtractInstanceVar', {
-    label: 'Subtract from instance variable',
-    category: 'Instance',
+    label: 'Отнять от переменной объекта',
+    category: 'Объект',
     params: [
-      { id: 'target', type: 'target',  label: 'Target',   default: '*' },
-      { id: 'var',    type: 'instvar', label: 'Variable', default: 'hp' },
-      { id: 'value',  type: 'number',  label: 'Value',    default: 1 },
+      { id: 'target', type: 'target',  label: 'Объект',     default: '*' },
+      { id: 'var',    type: 'instvar', label: 'Переменная', default: 'hp' },
+      { id: 'value',  type: 'number',  label: 'Значение',   default: 1 },
     ],
     compile: ({ target, var: name, value }) => (ctx) => {
       forEachMatchingObject(ctx, target, (obj) => {

@@ -1,20 +1,23 @@
+import { icon } from './icons.js';
+
 export class VarsPanel {
   constructor(container, project) {
     this.container = container;
     this.project = project;
     this.onChange = () => {};
     this.running = false;
-    /** @type {import('./history.js').History|null} */
     this.history = null;
 
     container.innerHTML = `
       <header class="vars-header">
-        <h3>Global variables</h3>
-        <button class="topbtn" data-action="add">+ Add</button>
+        <h3>Глобальные переменные</h3>
+        <button class="topbtn" data-action="add">
+          <svg class="icon"><use href="#icon-plus"/></svg><span>Добавить</span>
+        </button>
       </header>
       <div class="vars-list"></div>
     `;
-    this.listEl = container.querySelector('.vars-list');
+    this.listEl = container.querySelector('.vars-list');  
 
     container.addEventListener('click', (e) => this._onClick(e));
     container.addEventListener('input', (e) => this._onInput(e));
@@ -54,9 +57,9 @@ export class VarsPanel {
     const head = document.createElement('div');
     head.className = 'vars-row vars-row-head';
     head.innerHTML = `
-      <span>Name</span>
-      <span>Initial</span>
-      <span>Current</span>
+      <span title="Имя переменной">Имя</span>
+      <span title="Начальное значение">Нач.</span>
+      <span title="Текущее значение (во время игры)">Тек.</span>
       <span></span>
     `;
     this.listEl.appendChild(head);
@@ -64,7 +67,7 @@ export class VarsPanel {
     if (names.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'vars-empty';
-      empty.textContent = 'No variables. Add one.';
+      empty.textContent = 'Нет переменных. Добавьте.';
       this.listEl.appendChild(empty);
       return;
     }
@@ -78,7 +81,7 @@ export class VarsPanel {
       nameInput.type = 'text';
       nameInput.className = 'vars-name';
       nameInput.value = name;
-      nameInput.placeholder = 'name';
+      nameInput.placeholder = 'имя';
 
       const initialInput = document.createElement('input');
       initialInput.type = 'number';
@@ -93,7 +96,7 @@ export class VarsPanel {
       const del = document.createElement('button');
       del.className = 'vars-del';
       del.title = 'Удалить';
-      del.textContent = '✕';
+      del.innerHTML = icon('x');
 
       row.append(nameInput, initialInput, currentSpan, del);
       this.listEl.appendChild(row);
@@ -111,7 +114,7 @@ export class VarsPanel {
         this.project.varsInitial['var' + n] = 0;
         this.project.vars['var' + n] = 0;
       };
-      if (h) h.run('Add variable', apply); else apply();
+      if (h) h.run('Добавить переменную', apply); else apply();
       this.refresh();
       this.onChange();
       return;
@@ -125,7 +128,7 @@ export class VarsPanel {
         delete this.project.varsInitial[name];
         delete this.project.vars[name];
       };
-      if (h) h.run('Delete variable', apply); else apply();
+      if (h) h.run('Удалить переменную', apply); else apply();
       this.refresh();
       this.onChange();
     }
@@ -153,14 +156,14 @@ export class VarsPanel {
         delete this.project.varsInitial[oldName];
         delete this.project.vars[oldName];
       };
-      if (h) h.run('Rename variable', apply); else apply();
+      if (h) h.run('Переименовать переменную', apply); else apply();
 
       row.dataset.name = newName;
       this.onChange();
       return;
     }
 
-    // --- Initial value ---
+    // --- Начальное значение ---
     if (e.target.classList.contains('vars-initial')) {
       const n = parseFloat(e.target.value);
       if (!Number.isFinite(n)) return;
@@ -169,7 +172,7 @@ export class VarsPanel {
         this.project.varsInitial[oldName] = n;
         if (!this.running) this.project.vars[oldName] = n;
       };
-      if (h) h.run('Set var initial', apply); else apply();
+      if (h) h.run('Начальное значение', apply); else apply();
 
       if (!this.running) {
         const cur = row.querySelector('.vars-current');

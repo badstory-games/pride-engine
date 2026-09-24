@@ -1,7 +1,7 @@
 import { packProject } from '../project/serializer.js';
 
 const RUNTIME_ENTRY = new URL('./runtime-entry.js', import.meta.url).href;
-const SRC_ROOT      = new URL('../', import.meta.url).href;   // .../src/
+const SRC_ROOT      = new URL('../', import.meta.url).href;
 
 export async function exportWebGame(project, options = {}) {
   const title        = options.title || 'Pride Game';
@@ -34,7 +34,6 @@ export async function exportWebGame(project, options = {}) {
       assets[id] = await blobToDataUrl(blob);
       continue;
     }
-    // Fallback: попробовать по сети (например, если ассет создан не loadPNG)
     const fromNet = await tryFetchAsset(id);
     if (fromNet) {
       assets[id] = fromNet;
@@ -83,11 +82,27 @@ async function collectModules(rootUrl) {
   return out;
 }
 
+/**
+ * Заменяет комментарии пробелами (сохраняя переводы строк),
+ * чтобы регулярки для импортов не матчились в закомментированном коде.
+ * Строковые литералы НЕ трогаем — они несут реальные пути.
+ */
+function stripComments(src) {
+  // block comments
+  let out = src.replace(/\/\*[\s\S]*?\*\//g, (m) =>
+    m.replace(/[^\n]/g, ' ')
+  );
+  // line comments: // … до конца строки, но не часть URL вида https://
+  out = out.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/[^\n]/g, ' '));
+  return out;
+}
+
 function findRelativeImports(source) {
+  const clean = stripComments(source);
   const re = /(?:from\s+|import\s*\(\s*|import\s+)(['"])(\.\.?\/[^'"]+)\1/g;
   const out = [];
   let m;
-  while ((m = re.exec(source)) !== null) out.push(m[2]);
+  while ((m = re.exec(clean)) !== null) out.push(m[2]);
   return out;
 }
 
@@ -150,7 +165,6 @@ function blobToDataUrl(blob) {
 }
 
 function buildHtml({ title, importMap, project, assets, debugDraw }) {
-  // Экранируем "<", чтобы "</script>" в данных не порвал <script>-тег.
   const safe = (o) => JSON.stringify(o).replace(/</g, '\\u003c');
 
   const imJson     = safe({ imports: importMap });

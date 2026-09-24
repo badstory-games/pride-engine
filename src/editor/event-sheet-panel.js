@@ -1,5 +1,7 @@
 import { registry } from '../engine/events/registry.js';
 import { EventPopover } from './event-popover.js';
+import { Modal } from './modal.js';
+import { icon } from './icons.js';
 
 const KEY_OPTIONS = [
   'Space', 'Enter', 'Escape', 'Tab',
@@ -22,9 +24,11 @@ export class EventSheetPanel {
 
     container.innerHTML = `
       <div class="es-toolbar">
-        <h3>Event Sheet</h3>
+        <h3>Лист событий</h3>
         <div class="es-toolbar-actions">
-          <button class="topbtn" data-action="add-event">+ Add Event</button>
+          <button class="topbtn" data-action="add-event">
+            <svg class="icon"><use href="#icon-plus"/></svg><span>Событие</span>
+          </button>
         </div>
       </div>
       <div class="es-list"></div>
@@ -89,8 +93,7 @@ export class EventSheetPanel {
     const sheet = this._getSheet();
     if (!sheet || !sheet.events.length) {
       this.listEl.innerHTML =
-        '<div class="es-empty">Нет событий. Перетащи условие из палитры или нажми «+ Add Event».</div>';
-      return;
+        '<div class="es-empty">Нет событий. Перетащите условие из палитры или нажмите «+ Событие».</div>';
     }
     this.listEl.innerHTML = '';
     for (const ev of sheet.events) this.listEl.appendChild(this._renderEvent(ev, 0));
@@ -106,18 +109,28 @@ export class EventSheetPanel {
     const head = document.createElement('div');
     head.className = 'es-head';
     head.innerHTML = `
-      <label class="es-head-enable" title="Enable / disable event">
+      <label class="es-head-enable" title="Включить / выключить событие">
         <input type="checkbox" data-action="toggle-enable"
           ${event.disabled ? '' : 'checked'}>
         <span></span>
       </label>
       <span class="es-event-id">#${event.id}</span>
       <div class="es-head-actions">
-        <button class="es-mini" data-action="add-condition" title="Добавить условие">+ if</button>
-        <button class="es-mini" data-action="add-action"    title="Добавить действие">+ do</button>
-        <button class="es-mini" data-action="add-child"     title="Дочернее событие">+ child</button>
-        <button class="es-mini" data-action="duplicate"     title="Дублировать">⧉</button>
-        <button class="es-mini es-del" data-action="delete" title="Удалить">✕</button>
+        <button class="es-mini" data-action="add-condition" title="Добавить условие">
+          ${icon('plus')}<span>условие</span>
+        </button>
+        <button class="es-mini" data-action="add-action" title="Добавить действие">
+          ${icon('plus')}<span>действие</span>
+        </button>
+        <button class="es-mini" data-action="add-child" title="Добавить дочернее событие">
+          ${icon('git-branch')}
+        </button>
+        <button class="es-mini" data-action="duplicate" title="Дублировать">
+          ${icon('copy')}
+        </button>
+        <button class="es-mini es-del" data-action="delete" title="Удалить">
+          ${icon('x')}
+        </button>
       </div>
     `;
 
@@ -126,7 +139,7 @@ export class EventSheetPanel {
     condsEl.dataset.dropTarget = 'conditions';
     condsEl.dataset.eventId = event.id;
     if (!event.conditions || event.conditions.length === 0) {
-      condsEl.innerHTML = '<div class="es-section-empty">Drop condition here</div>';
+      condsEl.innerHTML = '<div class="es-section-empty">Перетащите условие сюда</div>';
     } else {
       for (const c of event.conditions) condsEl.appendChild(this._renderRow('cond', c, event.id));
     }
@@ -136,10 +149,11 @@ export class EventSheetPanel {
     actsEl.dataset.dropTarget = 'actions';
     actsEl.dataset.eventId = event.id;
     if (!event.actions || event.actions.length === 0) {
-      actsEl.innerHTML = '<div class="es-section-empty">Drop action here</div>';
+      actsEl.innerHTML = '<div class="es-section-empty">Перетащите действие сюда</div>';
     } else {
       for (const a of event.actions) actsEl.appendChild(this._renderRow('action', a, event.id));
     }
+
 
     const body = document.createElement('div');
     body.className = 'es-body';
@@ -178,13 +192,15 @@ export class EventSheetPanel {
       ? def.params.map((p) =>
           this._renderParam(kind, item.uid, item.type, p, item.params?.[p.id], item.params)
         ).join('')
-      : `<span class="es-param-error">unknown type: ${item.type}</span>`;
+      : `<span class="es-param-error">неизвестный тип: ${item.type}</span>`;
 
-    row.innerHTML = `
-      <span class="es-drag-handle" title="Перетащить">⋮⋮</span>
+     row.innerHTML = `
+      <span class="es-drag-handle" title="Перетащить">${icon('grip-vertical')}</span>
       <span class="es-row-label">${def ? def.label : item.type}</span>
       <span class="es-params">${paramsHtml}</span>
-      <button class="es-row-del" data-action="${kind === 'cond' ? 'del-condition' : 'del-action'}" title="Удалить">×</button>
+      <button class="es-row-del" data-action="${kind === 'cond' ? 'del-condition' : 'del-action'}" title="Удалить">
+        ${icon('x')}
+      </button>
     `;
     return row;
   }
@@ -229,9 +245,9 @@ export class EventSheetPanel {
 
       const inList = names.has(val);
       const opts = [...names].map((n) =>
-        `<option value="${n}"${n === val ? ' selected' : ''}>${n === '*' ? '* (all dynamic)' : n}</option>`).join('');
+        `<option value="${n}"${n === val ? ' selected' : ''}>${n === '*' ? '* (Все объекты, с динамическим типом тела)' : n}</option>`).join('');
       const extra = inList ? '' :
-        `<option value="${val}" selected>${val} (нет в сцене)</option>`;
+        `<option value="${val}" selected>${val} (нет в сцене)</option>`;  
 
       return `<label class="es-param"><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
@@ -258,7 +274,7 @@ export class EventSheetPanel {
       const opts = list.map((n) =>
         `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
       const extra = inList ? '' :
-        `<option value="${val}" selected>${val} (нет)</option>`;
+        `<option value="${val}" selected>${val} (нет в сцене)</option>`;
       return `<label class="es-param"><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
@@ -332,13 +348,22 @@ export class EventSheetPanel {
           e.dataTransfer.dropEffect = 'move';
           this._clearDropHighlight();
           ev.classList.add('drag-over');
+          return;
         }
       }
+
+      // Над невалидной целью — снимаем залипшую подсветку.
+      this._clearDropHighlight();
     });
 
+    // Снимаем подсветку только когда курсор реально покидает элемент,
+    // а не переходит между его дочерними узлами.
     c.addEventListener('dragleave', (e) => {
       const el = e.target.closest('.es-section, .es-event');
-      if (el) el.classList.remove('drag-over');
+      if (!el) return;
+      const to = e.relatedTarget;
+      if (to && el.contains(to)) return;
+      el.classList.remove('drag-over');
     });
 
     c.addEventListener('drop', (e) => {
@@ -483,8 +508,8 @@ export class EventSheetPanel {
       case 'add-child':     this._addEvent(eventId); break;
       case 'duplicate':     this._duplicateEvent(eventId); break;
       case 'delete':
-        if (confirm('Удалить событие?')) this._deleteEvent(eventId);
-        break;
+        this._confirmDeleteEvent(eventId);
+        return;
       case 'del-condition': {
         const row = btn.closest('.es-row');
         this._deleteRow(eventId, 'cond', +row.dataset.rowUid);
@@ -630,6 +655,18 @@ export class EventSheetPanel {
     this._recompile();
     this.refresh();
     this.onChange();
+  }
+
+  async _confirmDeleteEvent(eventId) {
+    const ok = await Modal.confirm({
+      title: 'Удалить событие',
+      message: 'Событие и все его условия, действия и дочерние события будут удалены.',
+      okText: 'Удалить',
+      cancelText: 'Отмена',
+      danger: true,
+    });
+    if (!ok) return;
+    this._deleteEvent(eventId);
   }
 
   _deleteEvent(eventId) {

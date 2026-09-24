@@ -2,68 +2,89 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Pride Engine</title>
+<title>Pride Engine — Редактор</title>
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
 <div id="app">
-  <header id="topbar">
-    <span>Pride Engine</span>
-    <button id="btn-shortcuts" title="Горячие клавиши (F1)">?</button>
+    <header id="topbar">
+    <span class="brand">Pride Engine</span>
+
+    <button id="btn-shortcuts" title="Горячие клавиши (F1)" aria-label="Горячие клавиши">
+      <svg class="icon"><use href="#icon-help"/></svg>
+    </button>
+
     <div class="topbar-group">
-      <button id="btn-new"  class="topbtn">New</button>
-      <button id="btn-save" class="topbtn">Save</button>
-      <button id="btn-load" class="topbtn">Load</button>
+      <button id="btn-new"  class="topbtn" title="Создать новый проект" aria-label="Новый проект">
+        <svg class="icon"><use href="#icon-file-plus"/></svg>
+      </button>
+      <button id="btn-save" class="topbtn" title="Сохранить проект в браузере" aria-label="Сохранить">
+        <svg class="icon"><use href="#icon-save"/></svg>
+      </button>
+      <button id="btn-load" class="topbtn" title="Загрузить проект из браузера" aria-label="Загрузить">
+        <svg class="icon"><use href="#icon-folder-open"/></svg>
+      </button>
     </div>
+
     <div class="topbar-group">
-      <button id="btn-save-pride" class="topbtn" title="Скачать .pride">⇩ .pride</button>
-      <button id="btn-open-pride" class="topbtn" title="Открыть .pride">⇧ .pride</button>
-      <button id="btn-export"     class="topbtn" title="Экспорт в HTML">⤓ Game</button>
+      <button id="btn-undo" class="topbtn" title="Отменить (Ctrl+Z)" aria-label="Отменить" disabled>
+        <svg class="icon"><use href="#icon-undo"/></svg>
+      </button>
+      <button id="btn-redo" class="topbtn" title="Повторить (Ctrl+Shift+Z / Ctrl+Y)" aria-label="Повторить" disabled>
+        <svg class="icon"><use href="#icon-redo"/></svg>
+      </button>
     </div>
+
     <div class="topbar-group">
-      <button id="btn-undo" class="topbtn" title="Undo (Ctrl+Z)" disabled>↶</button>
-      <button id="btn-redo" class="topbtn" title="Redo (Ctrl+Shift+Z / Ctrl+Y)" disabled>↷</button>
+      <button id="btn-save-pride" class="topbtn" title="Сохранить проект файлом" aria-label="Сохранить проект файлом">
+        <svg class="icon"><use href="#icon-download"/></svg>
+      </button>
+      <button id="btn-open-pride" class="topbtn" title="Открыть проект из файла" aria-label="Открыть проект из файла">
+        <svg class="icon"><use href="#icon-upload"/></svg>
+      </button>
+      <button id="btn-export" class="topbtn" title="Экспорт проекта в HTML-игру" aria-label="Экспорт">
+        <svg class="icon"><use href="#icon-package"/></svg>
+      </button>
     </div>
-    <span id="save-indicator" class="save-indicator">—</span>
 
     <div id="play-controls">
-      <button id="btn-play"  class="playbtn" title="Play (F5)">▶</button>
-      <button id="btn-pause" class="playbtn" title="Pause (F6)">⏸</button>
-      <button id="btn-stop"  class="playbtn" title="Stop (F7)">⏹</button>
-      <button id="btn-debug" class="playbtn" title="Debug draw">◎</button>
+      <button id="btn-play"  class="playbtn" title="Играть (F5)" aria-label="Играть">
+        <svg class="icon icon-fill"><use href="#icon-play"/></svg>
+      </button>
+      <button id="btn-pause" class="playbtn" title="Пауза (F6)" aria-label="Пауза">
+        <svg class="icon icon-fill"><use href="#icon-pause"/></svg>
+      </button>
+      <button id="btn-stop"  class="playbtn" title="Стоп (F7)" aria-label="Стоп">
+        <svg class="icon icon-fill"><use href="#icon-stop"/></svg>
+      </button>
+      <button id="btn-debug" class="playbtn" title="Отладка физики" aria-label="Отладка физики">
+        <svg class="icon"><use href="#icon-crosshair"/></svg>
+      </button>
     </div>
 
-    <span class="stage">Stage 6.2 — Instance Variables</span>
+    <span class="stage">Этап 6 — Undo / Redo / Instance vars</span>
   </header>
 
   <div id="main">
     <aside id="left-panel">
-      <h3>Tools</h3>
+      <h3 class="sr-only">Инструменты</h3>
       <div class="tool-list">
-        <button class="tool" data-tool="select" title="Select (Q / 1)">▣ Select</button>
-        <button class="tool" data-tool="rectangle" title="Rectangle (R / 2)">▭ Rect</button>
-        <button class="tool" data-tool="sprite" title="Sprite (S / 3)">✦ Sprite</button>
-      </div>
-
-      <h3 style="margin-top:20px">Hint</h3>
-      <div class="hint">
-        <div><b>MMB</b> / <b>Alt+LMB</b> — pan</div>
-        <div><b>Wheel</b> — zoom</div>
-        <div><b>Shift+Click</b> — multi-select</div>
-        <div><b>Drag empty</b> — box select</div>
-        <div><b>Delete</b> — удалить</div>
-        <div><b>Ctrl+A</b> — выделить всё</div>
-        <div><b>Esc</b> — снять выделение</div>
-        <div style="margin-top:6px;color:#7fa8d4">
-          <b>F1</b> — все горячие клавиши
-        </div>
+        <button class="tool" data-tool="select" title="Выбор (Q / 1)" aria-label="Выбор">
+          <svg class="icon"><use href="#icon-cursor"/></svg>
+        </button>
+        <button class="tool" data-tool="rectangle" title="Прямоугольник (R / 2)" aria-label="Прямоугольник">
+          <svg class="icon"><use href="#icon-square"/></svg>
+        </button>
+        <button class="tool" data-tool="sprite" title="Спрайт (S / 3)" aria-label="Спрайт">
+          <svg class="icon"><use href="#icon-image"/></svg>
+        </button>
       </div>
     </aside>
 
     <div id="canvas-wrap">
       <div id="view-tabs">
-        <button class="vtab active" data-tab="layout">Layout</button>
-        <button class="vtab"        data-tab="event-sheet">Event Sheet</button>
+        <button class="vtab active" data-tab="layout">Сцена</button>
+        <button class="vtab"        data-tab="event-sheet">События</button>
       </div>
 
       <canvas id="pride-canvas" width="1024" height="640"></canvas>
@@ -77,46 +98,51 @@
     </div>
 
     <aside id="right-panel">
-      <h3>Inspector</h3>
+      <h3>Инспектор</h3>
       <div id="inspector-content"></div>
     </aside>
   </div>
 
   <div id="layers-panel"></div>
 
-  <footer id="status">Ready</footer>
+  <footer id="status">
+    <span id="status-info">Готово</span>
+    <span id="save-indicator" class="save-indicator">—</span>
+  </footer>
 </div>
 
-<!-- ---------- SHORTCUTS MODAL ---------- -->
+<!-- ---------- МОДАЛКА ГОРЯЧИХ КЛАВИШ ---------- -->
 <div id="shortcuts-modal" class="modal-backdrop" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sc-title">
     <header class="modal-header">
       <h2 id="sc-title">Горячие клавиши</h2>
-      <button class="modal-close" aria-label="Закрыть">×</button>
+      <button class="modal-close" aria-label="Закрыть">
+        <svg class="icon"><use href="#icon-x"/></svg>
+      </button>
     </header>
     <div class="modal-body">
       <section>
         <h3>Инструменты</h3>
         <table class="sc-table">
-          <tr><td><kbd>Q</kbd> / <kbd>1</kbd></td><td>Select</td></tr>
-          <tr><td><kbd>R</kbd> / <kbd>2</kbd></td><td>Rectangle</td></tr>
-          <tr><td><kbd>S</kbd> / <kbd>3</kbd></td><td>Sprite</td></tr>
+          <tr><td><kbd>Q</kbd> / <kbd>1</kbd></td><td>Выбор</td></tr>
+          <tr><td><kbd>R</kbd> / <kbd>2</kbd></td><td>Прямоугольник</td></tr>
+          <tr><td><kbd>S</kbd> / <kbd>3</kbd></td><td>Спрайт</td></tr>
         </table>
       </section>
       <section>
         <h3>Камера</h3>
         <table class="sc-table">
-          <tr><td><kbd>MMB</kbd></td><td>Pan (удерживая, двигать мышью)</td></tr>
-          <tr><td><kbd>Alt</kbd> + <kbd>LMB</kbd></td><td>Pan (альтернатива)</td></tr>
-          <tr><td><kbd>Wheel</kbd></td><td>Zoom к курсору</td></tr>
+          <tr><td><kbd>СКМ</kbd></td><td>Панорама (удерживая, двигать мышью)</td></tr>
+          <tr><td><kbd>Alt</kbd> + <kbd>ЛКМ</kbd></td><td>Панорама (альтернатива)</td></tr>
+          <tr><td><kbd>Колесо</kbd></td><td>Масштаб к курсору</td></tr>
         </table>
       </section>
       <section>
         <h3>Выделение</h3>
         <table class="sc-table">
-          <tr><td><kbd>LMB</kbd></td><td>Выбрать объект</td></tr>
-          <tr><td><kbd>Shift</kbd> + <kbd>LMB</kbd></td><td>Добавить / убрать из выделения</td></tr>
-          <tr><td><kbd>Drag</kbd> по пустому</td><td>Box-select</td></tr>
+          <tr><td><kbd>ЛКМ</kbd></td><td>Выбрать объект</td></tr>
+          <tr><td><kbd>Shift</kbd> + <kbd>ЛКМ</kbd></td><td>Добавить / убрать из выделения</td></tr>
+          <tr><td><kbd>Тянуть</kbd> по пустому</td><td>Выделение рамкой</td></tr>
           <tr><td><kbd>Ctrl</kbd> + <kbd>A</kbd></td><td>Выделить всё</td></tr>
           <tr><td><kbd>Esc</kbd></td><td>Снять выделение</td></tr>
         </table>
@@ -124,30 +150,35 @@
       <section>
         <h3>Редактирование</h3>
         <table class="sc-table">
-          <tr><td><kbd>Drag</kbd> по объекту</td><td>Переместить (группой)</td></tr>
+          <tr><td><kbd>Тянуть</kbd> по объекту</td><td>Переместить (группой)</td></tr>
           <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Удалить выделенное</td></tr>
-          <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
-          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Redo</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Отменить</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Повторить</td></tr>
         </table>
       </section>
       <section>
         <h3>Симуляция</h3>
         <table class="sc-table">
-          <tr><td><kbd>F5</kbd></td><td>Play / Resume</td></tr>
-          <tr><td><kbd>F6</kbd></td><td>Pause</td></tr>
-          <tr><td><kbd>F7</kbd></td><td>Stop</td></tr>
+          <tr><td><kbd>F5</kbd></td><td>Играть / Продолжить</td></tr>
+          <tr><td><kbd>F6</kbd></td><td>Пауза</td></tr>
+          <tr><td><kbd>F7</kbd></td><td>Стоп</td></tr>
         </table>
       </section>
       <section>
-        <h3>Event Sheet</h3>
+        <h3>Лист событий</h3>
         <table class="sc-table">
-          <tr><td><kbd>Drag</kbd> из палитры</td><td>Добавить условие / действие</td></tr>
-          <tr><td><kbd>Dbl-click</kbd> по палитре</td><td>Добавить в первое событие</td></tr>
-          <tr><td><kbd>Drag</kbd> за <kbd>⋮⋮</kbd></td><td>Перенос строки в другое событие</td></tr>
-          <tr><td><kbd>Drag</kbd> за шапку</td><td>Перестановка событий</td></tr>
-          <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save .pride</td></tr>
-          <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Open .pride</td></tr>
-          <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export game.html</td></tr>
+          <tr><td><kbd>Тянуть</kbd> из палитры</td><td>Добавить условие / действие</td></tr>
+          <tr><td><kbd>Двойной клик</kbd> по палитре</td><td>Добавить в первое событие</td></tr>
+          <tr><td><kbd>Тянуть</kbd> за ручку</td><td>Перенос строки в другое событие</td></tr>
+          <tr><td><kbd>Тянуть</kbd> за шапку</td><td>Перестановка событий</td></tr>
+        </table>
+      </section>
+      <section>
+        <h3>Файлы</h3>
+        <table class="sc-table">
+          <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Сохранить .pride</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Открыть .pride</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Экспорт в game.html</td></tr>
         </table>
       </section>
       <section>

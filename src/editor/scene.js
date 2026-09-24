@@ -4,7 +4,7 @@ export class Scene {
   constructor() {
     this.objects = [];
     this.layers = [
-      { id: 'default', name: 'Layer 1', visible: true },
+      { id: 'default', name: 'Слой 1', visible: true },
     ];
     this.nextId = 1;
     this.nextLayerId = 1;
@@ -13,7 +13,7 @@ export class Scene {
   // ---------- Layers ----------
   addLayer(name) {
     const id = 'layer_' + (this.nextLayerId++);
-    const layer = { id, name: name || `Layer ${this.layers.length + 1}`, visible: true };
+    const layer = { id, name: name || `Слой ${this.layers.length + 1}`, visible: true };
     this.layers.push(layer);
     return layer;
   }
@@ -56,7 +56,7 @@ export class Scene {
     const obj = {
       id: this.nextId++,
       type: 'sprite',
-      name: 'Object',
+      name: 'Объект',
       x: 0, y: 0,
       width: 64, height: 64,
       rotation: 0,
@@ -113,7 +113,7 @@ export class Scene {
     this.objects  = Array.isArray(data.objects) ? data.objects : [];
     this.layers   = Array.isArray(data.layers) && data.layers.length
       ? data.layers
-      : [{ id: 'default', name: 'Layer 1', visible: true }];
+      : [{ id: 'default', name: 'Слой 1', visible: true }];
     this.nextId   = data.nextId || (this.objects.reduce((m, o) => Math.max(m, o.id), 0) + 1);
     this.nextLayerId = data.nextLayerId || (this.layers.length + 1);
 
@@ -128,7 +128,7 @@ export class Scene {
       if (o.visible === undefined) o.visible = true;
       if (o.opacity === undefined) o.opacity = 1;
       if (o.rotation === undefined) o.rotation = 0;
-      if (!o.name) o.name = 'Object';
+      if (!o.name) o.name = 'Объект';
       if (!o.physics) o.physics = defaultPhysics();
       if (!o.properties || typeof o.properties !== 'object') o.properties = {};
     }

@@ -24,8 +24,7 @@ export function pickTopmost(scene, wx, wy) {
 
 /**
  * Выделяет объекты, чей мировой AABB пересекается с прямоугольником.
- * Для неповёрнутых — точное AABB-пересечение.
- * Для повёрнутых — пересечение по bounding box всех четырёх углов.
+ * Учитывает видимость и объекта, и его слоя — как pickTopmost.
  */
 export function objectsInRect(scene, x0, y0, x1, y1) {
   const minX = Math.min(x0, x1), maxX = Math.max(x0, x1);
@@ -34,6 +33,8 @@ export function objectsInRect(scene, x0, y0, x1, y1) {
   const result = [];
   for (const obj of scene.objects) {
     if (!obj.visible) continue;
+    const layer = scene.getLayer(obj.layerId);
+    if (!layer || !layer.visible) continue;
 
     const b = objectBounds(obj);
     if (b.minX < maxX && b.maxX > minX &&
@@ -65,7 +66,6 @@ function objectBounds(obj) {
   let minX =  Infinity, minY =  Infinity;
   let maxX = -Infinity, maxY = -Infinity;
 
-  // Четыре угла (локальные координаты относительно центра)
   const corners = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]];
   for (let i = 0; i < 4; i++) {
     const lx = corners[i][0];

@@ -1,3 +1,5 @@
+import { icon } from './icons.js';
+
 export class Inspector {
   constructor(container, editor, scene) {
     this.container = container;
@@ -44,16 +46,16 @@ export class Inspector {
     this.container.appendChild(form);
     this.formEl = form;
 
-    // ---------- Basics ----------
-    this._textField(form, 'name', 'Name');
+    // ---------- Основное ----------
+    this._textField(form, 'name', 'Имя');
     this._numField(form, 'x',        'X');
     this._numField(form, 'y',        'Y');
-    this._numField(form, 'width',    'Width',  { min: 1, step: 1 });
-    this._numField(form, 'height',   'Height', { min: 1, step: 1 });
-    this._numField(form, 'rotationDeg', 'Rotation°', { step: 1 });
-    this._numField(form, 'opacity',  'Opacity', { min: 0, max: 1, step: 0.05 });
-    this._selectField(form, 'layerId', 'Layer');
-    this._selectField(form, 'textureId', 'Texture');
+    this._numField(form, 'width',    'Ширина',  { min: 1, step: 1 });
+    this._numField(form, 'height',   'Высота',  { min: 1, step: 1 });
+    this._numField(form, 'rotationDeg', 'Поворот°', { step: 1 });
+    this._numField(form, 'opacity',  'Прозрачность', { min: 0, max: 1, step: 0.05 });
+    this._selectField(form, 'layerId', 'Слой');
+    this._selectField(form, 'textureId', 'Текстура');
 
     const idRow = document.createElement('div');
     idRow.className = 'inspector-row';
@@ -63,28 +65,28 @@ export class Inspector {
 
     const visRow = document.createElement('div');
     visRow.className = 'inspector-row inspector-row-check';
-    visRow.innerHTML = `<label><input type="checkbox" data-prop="visible"> Visible</label>`;
+    visRow.innerHTML = `<label><input type="checkbox" data-prop="visible"> Видимый</label>`;
     form.appendChild(visRow);
     this.fields.visible = visRow.querySelector('input');
 
-    // ---------- Physics ----------
+    // ---------- Физика ----------
     const physTitle = document.createElement('div');
     physTitle.className = 'inspector-section-title';
-    physTitle.textContent = 'Physics';
+    physTitle.textContent = 'Физика';
     form.appendChild(physTitle);
 
     const enRow = document.createElement('div');
     enRow.className = 'inspector-row inspector-row-check';
-    enRow.innerHTML = `<label><input type="checkbox" data-prop="physEnabled"> Enable physics</label>`;
+    enRow.innerHTML = `<label><input type="checkbox" data-prop="physEnabled"> Включить физику</label>`;
     form.appendChild(enRow);
     this.fields.physEnabled = enRow.querySelector('input');
 
-    this._selectField(form, 'physType',   'Body type');
-    this._selectField(form, 'physShape',  'Shape');
-    this._numField   (form, 'physDensity',     'Density',     { min: 0, step: 0.1 });
-    this._numField   (form, 'physFriction',    'Friction',    { min: 0, max: 1, step: 0.05 });
-    this._numField   (form, 'physRestitution', 'Restitution', { min: 0, max: 1, step: 0.05 });
-    this._numField   (form, 'physRadius',      'Radius',      { min: 1, step: 1 });
+    this._selectField(form, 'physType',   'Тип тела');
+    this._selectField(form, 'physShape',  'Форма');
+    this._numField   (form, 'physDensity',     'Плотность',  { min: 0, step: 0.1 });
+    this._numField   (form, 'physFriction',    'Трение',     { min: 0, max: 1, step: 0.05 });
+    this._numField   (form, 'physRestitution', 'Упругость',  { min: 0, max: 1, step: 0.05 });
+    this._numField   (form, 'physRadius',      'Радиус',     { min: 1, step: 1 });
 
     const fillSelect = (sel, values) => {
       sel.innerHTML = '';
@@ -97,15 +99,16 @@ export class Inspector {
     fillSelect(this.fields.physType,  ['static', 'dynamic', 'kinematic']);
     fillSelect(this.fields.physShape, ['box', 'circle']);
 
-    this._physFields = [
-      'physType', 'physShape', 'physDensity',
-      'physFriction', 'physRestitution', 'physRadius',
+    // physType/physShape оставлены активными всегда — они задают сам факт
+    // того, каким будет тело, когда физика включается.
+    this._physNumericFields = [
+      'physDensity', 'physFriction', 'physRestitution', 'physRadius',
     ];
 
-    // ---------- Instance variables ----------
+    // ---------- Переменные объекта ----------
     const instTitle = document.createElement('div');
     instTitle.className = 'inspector-section-title';
-    instTitle.textContent = 'Instance variables';
+    instTitle.textContent = 'Переменные объекта';
     form.appendChild(instTitle);
 
     const instWrap = document.createElement('div');
@@ -116,7 +119,7 @@ export class Inspector {
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'topbtn inspector-instvar-add';
-    addBtn.textContent = '+ Add variable';
+    addBtn.innerHTML = `${icon('plus')}<span>Добавить переменную</span>`;
     addBtn.dataset.action = 'instvar-add';
     form.appendChild(addBtn);
   }
@@ -259,9 +262,11 @@ export class Inspector {
     if (radiusRow) radiusRow.style.display = (ph.shape === 'circle') ? '' : 'none';
 
     const disabled = !ph.enabled;
-    for (const p of this._physFields) {
+    for (const p of this._physNumericFields) {
       this.fields[p].disabled = disabled;
     }
+    // physRadius активен только при включённой физике и круглой форме.
+    this.fields.physRadius.disabled = disabled || ph.shape !== 'circle';
 
     this._renderInstanceVars();
   }
@@ -285,8 +290,6 @@ export class Inspector {
 
     const sig = names.join('|') + '#' + sel.length;
 
-    // Не пересобираем DOM, если пользователь прямо сейчас правит
-    // имя или значение instvar — иначе потеряется фокус.
     const active = document.activeElement;
     const editingInstVar = active
       && this._instVarsEl.contains(active)
@@ -305,7 +308,7 @@ export class Inspector {
     if (names.length === 0) {
       const e = document.createElement('div');
       e.className = 'inspector-instvars-empty';
-      e.textContent = 'No variables.';
+      e.textContent = 'Нет переменных.';
       c.appendChild(e);
       return;
     }
@@ -320,7 +323,7 @@ export class Inspector {
       nameInput.className = 'instvar-name';
       nameInput.value = name;
       nameInput.dataset.instVarField = 'name';
-      nameInput.placeholder = 'name';
+      nameInput.placeholder = 'Имя';
 
       const valueInput = document.createElement('input');
       valueInput.type = 'number';
@@ -333,7 +336,7 @@ export class Inspector {
       del.type = 'button';
       del.className = 'instvar-del';
       del.title = 'Удалить';
-      del.textContent = '✕';
+      del.innerHTML = icon('x');
       del.dataset.instVarField = 'delete';
 
       row.append(nameInput, valueInput, del);
@@ -361,7 +364,6 @@ export class Inspector {
   // ============================================================
 
   _onFormClick(e) {
-    // Delete instance var
     const del = e.target.closest('.instvar-del');
     if (del) {
       const row = del.closest('.inspector-instvar-row');
@@ -384,7 +386,6 @@ export class Inspector {
       return;
     }
 
-    // Add new instance var
     if (e.target.closest('[data-action="instvar-add"]')) {
       this._addInstanceVar();
     }
@@ -416,15 +417,24 @@ export class Inspector {
   _onFormFocusIn(e) {
     const input = e.target;
     if (!input || !input.classList) return;
-    if (!input.classList.contains('instvar-name')) return;
 
-    const row = input.closest('.inspector-instvar-row');
-    if (!row) return;
+    // ---- instvar name: запоминаем «якорь» для отката ----
+    if (input.classList.contains('instvar-name')) {
+      const row = input.closest('.inspector-instvar-row');
+      if (!row) return;
+      input.dataset.originalName = row.dataset.instVarName;
+      input.classList.remove('instvar-name-invalid');
+      return;
+    }
 
-    // Запоминаем имя, каким оно было на момент фокуса — это
-    // «якорь» для отката при коллизии или пустом вводе.
-    input.dataset.originalName = row.dataset.instVarName;
-    input.classList.remove('instvar-name-invalid');
+    // ---- обычные поля: открываем undo-транзакцию ----
+    // На каждое нажатие клавиши новая запись в историю не нужна —
+    // одна транзакция на всё редактирование поля.
+    const prop = input.dataset && input.dataset.prop;
+    if (!prop || input.readOnly || input.type === 'checkbox') return;
+    if (this.editor.selection.size === 0) return;
+    const h = this.editor.history;
+    if (h) h.begin('Inspector: ' + prop);
   }
 
   _onFormKeydown(e) {
@@ -448,7 +458,7 @@ export class Inspector {
       return;
     }
 
-    // ----- instvar: value (восстановить, если поле пустое) -----
+    // ----- instvar: value -----
     if (input.classList.contains('instvar-value')) {
       const v = parseFloat(input.value);
       if (!Number.isFinite(v)) {
@@ -460,7 +470,14 @@ export class Inspector {
           input.value = props[name] ?? 0;
         }
       }
+      return;
     }
+
+    // ----- обычное поле: закрываем undo-транзакцию -----
+    const prop = input.dataset && input.dataset.prop;
+    if (!prop) return;
+    const h = this.editor.history;
+    if (h) h.commit();
   }
 
   _commitInstVarName(input) {
@@ -470,14 +487,12 @@ export class Inspector {
     const originalName = input.dataset.originalName || row.dataset.instVarName;
     const newName = (input.value || '').trim();
 
-    // Пустое или совпадает с исходным — просто возвращаем значение.
     if (!newName || newName === originalName) {
       input.value = originalName;
       input.classList.remove('instvar-name-invalid');
       return;
     }
 
-    // Коллизия: во «первом» выбранном объекте уже есть такое имя.
     const first = this.scene.get([...this.editor.selection][0]);
     if (first && first.properties && first.properties[newName] !== undefined) {
       input.value = originalName;
@@ -486,7 +501,6 @@ export class Inspector {
       return;
     }
 
-    // Коммит переименования.
     const h = this.editor.history;
     const apply = () => {
       for (const id of this.editor.selection) {
@@ -519,8 +533,8 @@ export class Inspector {
     const prop = e.target.dataset && e.target.dataset.prop;
     if (!prop) return;
 
-    const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-    const h = this.editor.history;
+    const isCheckbox = e.target.type === 'checkbox';
+    const value = isCheckbox ? e.target.checked : e.target.value;
 
     const apply = () => {
       for (const id of this.editor.selection) {
@@ -529,7 +543,7 @@ export class Inspector {
 
         switch (prop) {
           case 'name':
-            obj.name = String(value) || 'Object';
+            obj.name = String(value) || 'Объект';
             break;
           case 'x':
           case 'y':
@@ -587,7 +601,15 @@ export class Inspector {
       this.editor.onChange();
     };
 
-    if (h) h.run('Inspector: ' + prop, apply); else apply();
+    // Чекбоксы — атомарные действия, их сразу пишем в историю.
+    // Текстовые и number-поля уже мутируют объекты через live-input,
+    // а undo-транзакция открыта в focusin и закроется в blur.
+    if (isCheckbox) {
+      const h = this.editor.history;
+      if (h) h.run('Inspector: ' + prop, apply); else apply();
+    } else {
+      apply();
+    }
   }
 
   _onInstVarChange(e) {
@@ -595,7 +617,7 @@ export class Inspector {
     const row = e.target.closest('.inspector-instvar-row');
     if (!row) return;
 
-    // ---------- name: только live-валидация, коммит — на blur ----------
+    // ---------- name: live-валидация, коммит на blur ----------
     if (field === 'name') {
       const originalName = e.target.dataset.originalName || row.dataset.instVarName;
       const newName = (e.target.value || '').trim();

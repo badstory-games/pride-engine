@@ -7,12 +7,12 @@ export class EventPalette {
 
     container.innerHTML = `
       <div class="pal-section" data-kind="conditions">
-        <h4>Conditions</h4>
+        <h4>Условия</h4>
         <input type="text" class="pal-search" placeholder="Поиск…">
         <div class="pal-list"></div>
       </div>
       <div class="pal-section" data-kind="actions">
-        <h4>Actions</h4>
+        <h4>Действия</h4>
         <input type="text" class="pal-search" placeholder="Поиск…">
         <div class="pal-list"></div>
       </div>
@@ -46,7 +46,7 @@ export class EventPalette {
 
     const groups = new Map();
     for (const it of items) {
-      const cat = it.category || 'Other';
+      const cat = it.category || 'Прочее';
       if (!groups.has(cat)) groups.set(cat, []);
       groups.get(cat).push(it);
     }

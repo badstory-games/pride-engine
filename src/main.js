@@ -31,15 +31,19 @@ import { saveProject, loadProject, clearProject, hasProject } from './project/st
 import { serializeProject, deserializeProject } from './project/serializer.js';
 import { downloadBytes, downloadText, pickFile, readFileBytes } from './project/file-io.js';
 import { exportWebGame } from './export/exporter.js';
+import { Modal } from './editor/modal.js';
+import { initIcons } from './editor/icons.js';
 
 async function main() {
+  initIcons();
+  
   // --- Регистрация условий/действий ---
   registerConditions();
   registerActions();
 
   const canvas   = document.getElementById('pride-canvas');
   const fpsEl    = document.getElementById('fps');
-  const statusEl = document.getElementById('status');
+  const statusEl = document.getElementById('status-info');
 
   const renderer = new Renderer();
   await renderer.init(canvas);
@@ -204,11 +208,19 @@ async function main() {
 
   const eventPalette = new EventPalette(
     document.getElementById('event-palette'),
-    (kind, type) => {
+    async (kind, type) => {
       const sheet = project.sheet;
       if (!sheet) return;
       const first = sheet.events[0];
-      if (!first) { alert('Сначала создайте событие'); return; }
+      if (!first) {
+        await Modal.alert({
+          title: 'Нет активного события',
+          message: 'Сначала нажмите «+ Событие» в центре экрана, чтобы создать событие, а затем добавляйте в него условия и действия.',
+          okText: 'Понятно',
+        });
+        return;
+      }
+
       const map = kind === 'conditions' ? registry.conditions : registry.actions;
       const def = map.get(type);
       if (!def) return;
@@ -313,8 +325,15 @@ async function main() {
     }
   });
 
-  document.getElementById('btn-load').addEventListener('click', () => {
-    if (!hasProject()) { alert('Нет сохранённого проекта'); return; }
+  document.getElementById('btn-load').addEventListener('click', async () => {
+    if (!hasProject()) {
+      await Modal.alert({
+        title: 'Нет сохранённого проекта',
+        message: 'В этом браузере ещё не сохранялся проект. Нажмите «Сохранить», чтобы создать точку сохранения.',
+        okText: 'Понятно',
+      });
+      return;
+    }
     if (loadProject(project)) {
       editor.clearSelection();
       if (!project.sheet) project.sheet = defaultEventSheet();
@@ -329,11 +348,19 @@ async function main() {
     }
   });
 
-  document.getElementById('btn-new').addEventListener('click', () => {
-    if (!confirm('Создать новый проект? Несохранённое будет потеряно.')) return;
+  document.getElementById('btn-new').addEventListener('click', async () => {
+    const ok = await Modal.confirm({
+      title: 'Создать новый проект',
+      message: 'Текущая сцена, лист событий и переменные будут сброшены. Несохранённые изменения будут потеряны.',
+      okText: 'Создать',
+      cancelText: 'Отмена',
+      danger: true,
+    });
+    if (!ok) return;
+
     clearProject();
     scene.objects = [];
-    scene.layers = [{ id: 'default', name: 'Layer 1', visible: true }];
+    scene.layers = [{ id: 'default', name: 'Слой 1', visible: true }];
     scene.nextId = 1;
     scene.nextLayerId = 1;
     project.sheet = defaultEventSheet();
@@ -383,7 +410,11 @@ async function main() {
     } catch (e) {
       console.error('[open .pride]', e);
       setIndicator('error', '✕ load error');
-      alert('Не удалось открыть файл: ' + e.message);
+      await Modal.alert({
+        title: 'Не удалось открыть файл',
+        message: e.message || 'Неизвестная ошибка.',
+        okText: 'Закрыть',
+      })
     }
   }
 
@@ -400,7 +431,11 @@ async function main() {
     } catch (e) {
       console.error('[export]', e);
       setIndicator('error', '✕ export error');
-      alert('Экспорт не удался: ' + e.message);
+      await Modal.alert({
+        title: 'Экспорт не удался',
+        message: e.message || 'Неизвестная ошибка.',
+        okText: 'Закрыть',
+      });
     }
   }
 
@@ -589,7 +624,7 @@ async function main() {
     if (now - lastStatus > 100) {
       lastStatus = now;
       const w = controller.mouseWorld;
-      const state = bridge.running ? (bridge.paused ? 'PAUSED' : 'PLAYING') : 'EDITING';
+      const state = bridge.running ? (bridge.paused ? 'ПАУЗА' : 'ИГРА') : 'РЕДАКТИРОВАНИЕ';
 
       const varsPreview = Object.keys(project.vars)
         .slice(0, 4)

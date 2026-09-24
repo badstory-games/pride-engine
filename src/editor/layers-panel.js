@@ -1,3 +1,7 @@
+import { icon } from './icons.js';
+import { Modal } from './modal.js';
+
+
 export class LayersPanel {
   constructor(container, editor, scene) {
     this.container = container;
@@ -10,8 +14,10 @@ export class LayersPanel {
 
     this.container.innerHTML = `
       <header class="layers-header">
-        <h3>Layers</h3>
-        <button id="btn-add-layer" class="topbtn">+ Add</button>
+        <h3>Слои</h3>
+        <button id="btn-add-layer" class="topbtn">
+          <svg class="icon"><use href="#icon-plus"/></svg><span>Добавить</span>
+        </button>
       </header>
       <div id="layers-list" class="layers-list"></div>
     `;
@@ -20,7 +26,7 @@ export class LayersPanel {
       .addEventListener('click', () => {
         const h = this.editor.history;
         const apply = () => { this.scene.addLayer(); };
-        if (h) h.run('Add layer', apply); else apply();
+        if (h) h.run('Добавить слой', apply); else apply();
         this.editor.onChange();
       });
   }
@@ -50,12 +56,12 @@ export class LayersPanel {
       row.className = 'layer-row';
       row.dataset.layerId = layer.id;
       row.innerHTML = `
-        <button class="layer-vis" data-action="toggle" title="Visible">${layer.visible ? '👁' : '·'}</button>
+        <button class="layer-vis" data-action="toggle" title="Видимость">${layer.visible ? icon('eye') : icon('eye-off')}</button>
         <span class="layer-name" data-action="select" title="Клик — выделить объекты слоя, двойной — переименовать">${layer.name}</span>
         <span class="layer-count">${count}</span>
-        <button class="layer-btn" data-action="up"   title="Вверх"   ${isTop ? 'disabled' : ''}>↑</button>
-        <button class="layer-btn" data-action="down" title="Вниз"    ${isBottom ? 'disabled' : ''}>↓</button>
-        <button class="layer-btn layer-del" data-action="del" title="Удалить" ${this.scene.layers.length <= 1 ? 'disabled' : ''}>✕</button>
+        <button class="layer-btn" data-action="up"   title="Выше"  ${isTop ? 'disabled' : ''}>${icon('chevron-up')}</button>
+        <button class="layer-btn" data-action="down" title="Ниже"  ${isBottom ? 'disabled' : ''}>${icon('chevron-down')}</button>
+        <button class="layer-btn layer-del" data-action="del" title="Удалить" ${this.scene.layers.length <= 1 ? 'disabled' : ''}>${icon('x')}</button>
       `;
       this.listEl.appendChild(row);
     }
@@ -76,35 +82,51 @@ export class LayersPanel {
           const l = this.scene.getLayer(layerId);
           if (l) l.visible = !l.visible;
         };
-        if (h) h.run('Toggle layer', apply); else apply();
+        if (h) h.run('Видимость слоя', apply); else apply();
         break;
       }
       case 'select': {
         const objs = this.scene.objectsOnLayer(layerId);
         this.editor.selectMany(objs.map((o) => o.id), false);
-        return;   // выделение не влияет на панель слоёв
+        return;
       }
       case 'up': {
         const apply = () => this.scene.moveLayer(layerId, +1);
-        if (h) h.run('Move layer up', apply); else apply();
+        if (h) h.run('Слой выше', apply); else apply();
         break;
       }
       case 'down': {
         const apply = () => this.scene.moveLayer(layerId, -1);
-        if (h) h.run('Move layer down', apply); else apply();
+        if (h) h.run('Слой ниже', apply); else apply();
         break;
       }
       case 'del':
-        if (confirm('Удалить слой? Объекты перейдут на нижний.')) {
-          const apply = () => this.scene.removeLayer(layerId);
-          if (h) h.run('Delete layer', apply); else apply();
-        }
-        break;
+        this._confirmDelete(layerId);
+        return;   // editor.onChange() вызовется после подтверждения
     }
     this.editor.onChange();
   }
 
-  _onDblClick(e) {
+  async _confirmDelete(layerId) {
+    const l = this.scene.getLayer(layerId);
+    const ok = await Modal.confirm({
+      title: 'Удалить слой',
+      message: l
+        ? `Слой «${l.name}» будет удалён. Объекты перейдут на нижний слой.`
+        : 'Слой будет удалён. Объекты перейдут на нижний слой.',
+      okText: 'Удалить',
+      cancelText: 'Отмена',
+      danger: true,
+    });
+    if (!ok) return;
+
+    const h = this.editor.history;
+    const apply = () => this.scene.removeLayer(layerId);
+    if (h) h.run('Удалить слой', apply); else apply();
+    this.editor.onChange();
+  }
+
+  async _onDblClick(e) {
     const nameEl = e.target.closest('.layer-name');
     if (!nameEl) return;
 
@@ -115,12 +137,21 @@ export class LayersPanel {
     const l = this.scene.getLayer(row.dataset.layerId);
     if (!l) return;
 
-    const newName = prompt('Имя слоя:', l.name);
-    if (newName && newName.trim()) {
-      const h = this.editor.history;
-      const apply = () => { l.name = newName.trim(); };
-      if (h) h.run('Rename layer', apply); else apply();
-      this.editor.onChange();
-    }
+    const newName = await Modal.prompt({
+      title: 'Имя слоя',
+      defaultValue: l.name,
+      placeholder: 'Например: Фон',
+      okText: 'Переименовать',
+      cancelText: 'Отмена',
+    });
+    if (newName === null) return;
+
+    const trimmed = String(newName).trim();
+    if (!trimmed || trimmed === l.name) return;
+
+    const h = this.editor.history;
+    const apply = () => { l.name = trimmed; };
+    if (h) h.run('Переименовать слой', apply); else apply();
+    this.editor.onChange();
   }
 }

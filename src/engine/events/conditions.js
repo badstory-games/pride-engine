@@ -3,49 +3,49 @@ import { bodyMatchesAny, anyMatchingObject } from './helpers.js';
 
 export function registerConditions() {
   registry.conditions.register('EveryTick', {
-    label: 'Every tick',
-    category: 'System',
+    label: 'Каждый кадр',
+    category: 'Система',
     params: [],
     compile: () => () => true,
   });
 
   registry.conditions.register('TriggerOnce', {
-    label: 'Trigger once',
-    category: 'System',
+    label: 'Один раз',
+    category: 'Система',
     params: [],
     once: true,
     compile: () => () => true,
   });
 
   registry.conditions.register('OnKeyPressed', {
-    label: 'On key pressed',
-    category: 'Input',
-    params: [{ id: 'key', type: 'key', label: 'Key', default: 'Space' }],
+    label: 'При нажатии клавиши',
+    category: 'Ввод',
+    params: [{ id: 'key', type: 'key', label: 'Клавиша', default: 'Space' }],
     compile: ({ key }) => (ctx) => ctx.input.pressed.has(key),
   });
 
   registry.conditions.register('OnKeyReleased', {
-    label: 'On key released',
-    category: 'Input',
-    params: [{ id: 'key', type: 'key', label: 'Key', default: 'Space' }],
+    label: 'При отпускании клавиши',
+    category: 'Ввод',
+    params: [{ id: 'key', type: 'key', label: 'Клавиша', default: 'Space' }],
     compile: ({ key }) => (ctx) => ctx.input.released.has(key),
   });
 
   registry.conditions.register('IsKeyDown', {
-    label: 'Is key down',
-    category: 'Input',
-    params: [{ id: 'key', type: 'key', label: 'Key', default: 'Space' }],
+    label: 'Клавиша нажата',
+    category: 'Ввод',
+    params: [{ id: 'key', type: 'key', label: 'Клавиша', default: 'Space' }],
     compile: ({ key }) => (ctx) => ctx.input.down.has(key),
   });
 
   registry.conditions.register('CompareGlobalVar', {
-    label: 'Compare global variable',
-    category: 'System',
+    label: 'Сравнить глобальную переменную',
+    category: 'Система',
     params: [
-      { id: 'name',  type: 'varname', label: 'Name',  default: 'score' },
-      { id: 'op',    type: 'select',  label: 'Op',    default: '==',
+      { id: 'name',  type: 'varname', label: 'Имя',       default: 'score' },
+      { id: 'op',    type: 'select',  label: 'Операция',  default: '==',
         options: ['==', '!=', '<', '<=', '>', '>='] },
-      { id: 'value', type: 'number',  label: 'Value', default: 0 },
+      { id: 'value', type: 'number',  label: 'Значение',  default: 0 },
     ],
     compile: ({ name, op, value }) => (ctx) => {
       const v = ctx.vars[name] ?? 0;
@@ -61,16 +61,12 @@ export function registerConditions() {
     },
   });
 
-  /**
-   * Срабатывает ОДИН РАЗ при появлении новой пары контактов.
-   * Пока тела касаются — повторно не сработает.
-   */
   registry.conditions.register('OnCollision', {
-    label: 'On collision',
-    category: 'Collision',
+    label: 'При столкновении',
+    category: 'Столкновения',
     params: [
-      { id: 'a', type: 'target', label: 'A', default: '*' },
-      { id: 'b', type: 'target', label: 'B', default: '*' },
+      { id: 'a', type: 'target', label: 'Объект A', default: '*' },
+      { id: 'b', type: 'target', label: 'Объект B', default: '*' },
     ],
     compile: ({ a, b }) => (ctx) => {
       const cols = ctx.world.newCollisions;
@@ -85,19 +81,15 @@ export function registerConditions() {
 
   // ---------- INSTANCE VARIABLES ----------
 
-  /**
-   * Сравнивает instance-переменную с числом.
-   * Семантика: «истина, если ХОТЯ БЫ ОДИН объект под target удовлетворяет».
-   */
   registry.conditions.register('CompareInstanceVar', {
-    label: 'Compare instance variable',
-    category: 'Instance',
+    label: 'Сравнить переменную объекта',
+    category: 'Объект',
     params: [
-      { id: 'target', type: 'target',  label: 'Target',   default: '*' },
-      { id: 'var',    type: 'instvar', label: 'Variable', default: 'hp' },
-      { id: 'op',     type: 'select',  label: 'Op',       default: '==',
+      { id: 'target', type: 'target',  label: 'Объект',   default: '*' },
+      { id: 'var',    type: 'instvar', label: 'Переменная', default: 'hp' },
+      { id: 'op',     type: 'select',  label: 'Операция',   default: '==',
         options: ['==', '!=', '<', '<=', '>', '>='] },
-      { id: 'value',  type: 'number',  label: 'Value',    default: 0 },
+      { id: 'value',  type: 'number',  label: 'Значение',   default: 0 },
     ],
     compile: ({ target, var: name, op, value }) => (ctx) => {
       return anyMatchingObject(ctx, target, (obj) => {

@@ -65,8 +65,8 @@ async function gzipCompress(bytes) {
   if (typeof CompressionStream === 'undefined') return bytes;
   const cs = new CompressionStream('gzip');
   const writer = cs.writable.getWriter();
-  writer.write(bytes);
-  writer.close();
+  await writer.write(bytes);
+  await writer.close();
   const buf = await new Response(cs.readable).arrayBuffer();
   return new Uint8Array(buf);
 }
@@ -75,8 +75,8 @@ async function gzipDecompress(bytes) {
   if (typeof DecompressionStream === 'undefined') return bytes;
   const ds = new DecompressionStream('gzip');
   const writer = ds.writable.getWriter();
-  writer.write(bytes);
-  writer.close();
+  await writer.write(bytes);
+  await writer.close();
   const buf = await new Response(ds.readable).arrayBuffer();
   return new Uint8Array(buf);
 }

@@ -1,7 +1,10 @@
+import { icon } from './icons.js';
+
 export class ShortcutsModal {
   constructor() {
     this.el = document.getElementById('shortcuts-modal');
     this.closeBtn = this.el.querySelector('.modal-close');
+    if (this.closeBtn) this.closeBtn.innerHTML = icon('x');
 
     this.closeBtn.addEventListener('click', () => this.close());
     this.el.addEventListener('mousedown', (e) => {

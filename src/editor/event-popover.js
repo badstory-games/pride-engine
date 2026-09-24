@@ -33,7 +33,6 @@ export class EventPopover {
     this.el.addEventListener('keydown', (e) => {
       if (e.code === 'Escape') { e.preventDefault(); this.close(); }
       if (e.code === 'Enter') {
-        // Первый видимый (не hidden через style.display) элемент.
         const item = [...this.el.querySelectorAll('.es-pop-item')]
           .find((el) => el.style.display !== 'none');
         if (item) {
@@ -76,6 +75,10 @@ export class EventPopover {
     this._onSelect = onSelect;
     const search = this.el.querySelector('.es-pop-search');
     search.focus();
+
+    // Сбрасываем фильтр от прошлого открытия: пустая строка → все видны.
+    this._filter('');
+
     search.addEventListener('input', () => this._filter(search.value));
   }
 

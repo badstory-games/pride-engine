@@ -16,11 +16,8 @@ export function defaultPhysics() {
 }
 
 export class PhysicsBridge {
-  /**
-   * @param {Scene} scene
-   * @param {object} vars — тот же объект, что project.vars (по ссылке).
-   */
-  constructor(scene, vars) {
+  /** @param {Scene} scene */
+  constructor(scene) {
     this.scene = scene;
     this.world = new World({
       gravityX: 0,
