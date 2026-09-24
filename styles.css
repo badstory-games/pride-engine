@@ -346,7 +346,7 @@ aside h3 {
   inset: 0;
   background: #1a1a1a;
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px 1fr 260px;
   overflow: hidden;
   z-index: 5;
 }
@@ -567,3 +567,105 @@ aside h3 {
 }
 .es-event.dragging { opacity: 0.4; }
 .es-row.dragging   { opacity: 0.4; }
+
+/* ============================================================
+   VARS PANEL
+   ============================================================ */
+#vars-panel {
+  background: #202020;
+  border-left: 1px solid #333;
+  padding: 10px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.vars-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.vars-header h3 {
+  margin: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #7fa8d4;
+  font-weight: 600;
+}
+.vars-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.vars-row {
+  display: grid;
+  grid-template-columns: 1fr 58px 64px 22px;
+  gap: 4px;
+  align-items: center;
+}
+
+.vars-row-head {
+  padding: 0 4px 4px;
+  border-bottom: 1px solid #262626;
+  margin-bottom: 2px;
+}
+.vars-row-head span {
+  font: 10px system-ui;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #555;
+}
+
+.vars-row input {
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  color: #ddd;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font: 11px ui-monospace, monospace;
+  width: 100%;
+  min-width: 0;
+}
+.vars-row input:focus {
+  outline: none;
+  border-color: #4a7ea8;
+}
+
+.vars-current {
+  display: inline-block;
+  padding: 3px 6px;
+  border-radius: 3px;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  color: #6c9;
+  font: 11px ui-monospace, monospace;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vars-row .vars-del {
+  background: transparent;
+  border: none;
+  color: #555;
+  font: 14px/1 system-ui;
+  cursor: pointer;
+  padding: 0;
+}
+.vars-row .vars-del:hover { color: #e66; }
+
+.vars-empty {
+  color: #555;
+  font-style: italic;
+  font-size: 11px;
+  padding: 8px 4px;
+  text-align: center;
+  border: 1px dashed #333;
+  border-radius: 4px;
+  margin-top: 4px;
+}

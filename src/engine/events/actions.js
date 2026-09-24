@@ -1,30 +1,20 @@
 import { registry } from './registry.js';
-import { BodyType } from '../physics/body.js';
-
-/** Проверяет, попадает ли тело i под target: '*' — все динамические, иначе по name. */
-function matchTarget(ctx, i, target) {
-  const store = ctx.world.bodies;
-  if (store.btype[i] !== BodyType.DYNAMIC) return false;
-  if (!target || target === '*') return true;
-
-  const objId = store.userId[i];
-  const obj = objId >= 0 ? ctx.scene.get(objId) : null;
-  return !!obj && obj.name === target;
-}
+import { bodyMatchesTarget, findSceneObjectByName } from './helpers.js';
 
 export function registerActions() {
+  // ---------- PHYSICS ----------
   registry.actions.register('ApplyImpulse', {
     label: 'Apply impulse',
     category: 'Physics',
     params: [
-      { id: 'target', type: 'target', label: 'Target',     default: '*' },
-      { id: 'ix',     type: 'number', label: 'Impulse X',  default: 0 },
-      { id: 'iy',     type: 'number', label: 'Impulse Y',  default: -800 },
+      { id: 'target', type: 'target', label: 'Target',    default: '*' },
+      { id: 'ix',     type: 'number', label: 'Impulse X', default: 0 },
+      { id: 'iy',     type: 'number', label: 'Impulse Y', default: -800 },
     ],
     compile: ({ target, ix, iy }) => (ctx) => {
       const store = ctx.world.bodies;
       for (let i = 0; i < store.count; i++) {
-        if (!matchTarget(ctx, i, target)) continue;
+        if (!bodyMatchesTarget(ctx, i, target)) continue;
         store.vx[i] += ix * store.invMass[i];
         store.vy[i] += iy * store.invMass[i];
       }
@@ -42,13 +32,14 @@ export function registerActions() {
     compile: ({ target, vx, vy }) => (ctx) => {
       const store = ctx.world.bodies;
       for (let i = 0; i < store.count; i++) {
-        if (!matchTarget(ctx, i, target)) continue;
+        if (!bodyMatchesTarget(ctx, i, target)) continue;
         store.vx[i] = vx;
         store.vy[i] = vy;
       }
     },
   });
 
+  // ---------- TRANSFORM ----------
   registry.actions.register('SetPosition', {
     label: 'Set position',
     category: 'Transform',
@@ -60,22 +51,73 @@ export function registerActions() {
     compile: ({ target, x, y }) => (ctx) => {
       const store = ctx.world.bodies;
       for (let i = 0; i < store.count; i++) {
-        if (!matchTarget(ctx, i, target)) continue;
+        if (!bodyMatchesTarget(ctx, i, target)) continue;
         store.x[i] = x;
         store.y[i] = y;
       }
     },
   });
 
+  registry.actions.register('SetVisible', {
+    label: 'Set visible',
+    category: 'Display',
+    params: [
+      { id: 'target',  type: 'target', label: 'Target',  default: '*' },
+      { id: 'visible', type: 'select', label: 'Visible', default: 'false',
+        options: ['true', 'false'] },
+    ],
+    compile: ({ target, visible }) => (ctx) => {
+      const v = visible === 'true' || visible === true;
+      if (!target || target === '*') {
+        for (const obj of ctx.scene.objects) obj.visible = v;
+      } else {
+        const obj = findSceneObjectByName(ctx, target);
+        if (obj) obj.visible = v;
+      }
+    },
+  });
+
+  registry.actions.register('SetOpacity', {
+    label: 'Set opacity',
+    category: 'Display',
+    params: [
+      { id: 'target',  type: 'target', label: 'Target',  default: '*' },
+      { id: 'opacity', type: 'number', label: 'Opacity', default: 1,
+        min: 0, max: 1, step: 0.05 },
+    ],
+    compile: ({ target, opacity }) => (ctx) => {
+      const o = Math.max(0, Math.min(1, opacity));
+      if (!target || target === '*') {
+        for (const obj of ctx.scene.objects) obj.opacity = o;
+      } else {
+        const obj = findSceneObjectByName(ctx, target);
+        if (obj) obj.opacity = o;
+      }
+    },
+  });
+
+  // ---------- SYSTEM ----------
   registry.actions.register('AddGlobalVar', {
     label: 'Add to global variable',
     category: 'System',
     params: [
-      { id: 'name',  type: 'string', label: 'Name',  default: 'score' },
-      { id: 'value', type: 'number', label: 'Value', default: 1 },
+      { id: 'name',  type: 'varname', label: 'Name',  default: 'score' },
+      { id: 'value', type: 'number',  label: 'Value', default: 1 },
     ],
     compile: ({ name, value }) => (ctx) => {
       ctx.vars[name] = (ctx.vars[name] ?? 0) + value;
+    },
+  });
+
+  registry.actions.register('SetGlobalVar', {
+    label: 'Set global variable',
+    category: 'System',
+    params: [
+      { id: 'name',  type: 'varname', label: 'Name',  default: 'score' },
+      { id: 'value', type: 'number',  label: 'Value', default: 0 },
+    ],
+    compile: ({ name, value }) => (ctx) => {
+      ctx.vars[name] = value;
     },
   });
 }

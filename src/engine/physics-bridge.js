@@ -16,7 +16,11 @@ export function defaultPhysics() {
 }
 
 export class PhysicsBridge {
-  constructor(scene) {
+  /**
+   * @param {Scene} scene
+   * @param {object} vars — тот же объект, что project.vars (по ссылке).
+   */
+  constructor(scene, vars) {
     this.scene = scene;
     this.world = new World({
       gravityX: 0,
@@ -27,7 +31,8 @@ export class PhysicsBridge {
 
     this.running = false;
     this.paused = false;
-    this.snapshot = null;
+    this.snapshot = null;       // сцена (позиции, opacity, visible)
+    this.snapshot = null;   // глобальные переменные
     /** @type {{bodyIndex:number, objectId:number}[]} */
     this.mapping = [];
   }
@@ -39,12 +44,15 @@ export class PhysicsBridge {
   start() {
     if (this.running) return;
 
-    // 1) Снапшот — что и куда вернуть при Stop
     this.snapshot = this.scene.objects.map((o) => ({
-      id: o.id, x: o.x, y: o.y, rotation: o.rotation,
+      id:       o.id,
+      x:        o.x,
+      y:        o.y,
+      rotation: o.rotation,
+      opacity:  o.opacity,
+      visible:  o.visible,
     }));
 
-    // 2) Очистить мир, создать тела для объектов с physics.enabled
     this.world.clear();
     this.mapping.length = 0;
 
@@ -100,9 +108,11 @@ export class PhysicsBridge {
       for (const obj of this.scene.objects) {
         const s = byId.get(obj.id);
         if (s) {
-          obj.x = s.x;
-          obj.y = s.y;
+          obj.x        = s.x;
+          obj.y        = s.y;
           obj.rotation = s.rotation;
+          obj.opacity  = s.opacity;
+          obj.visible  = s.visible;
         }
       }
     }
@@ -114,7 +124,6 @@ export class PhysicsBridge {
     this.paused = false;
   }
 
-  /** Переносит позиции тел обратно в объекты сцены (по центру). */
   sync() {
     if (!this.running) return;
     const store = this.world.bodies;
@@ -126,7 +135,6 @@ export class PhysicsBridge {
 
       obj.x = store.x[bodyIndex] - obj.width  / 2;
       obj.y = store.y[bodyIndex] - obj.height / 2;
-      // rotation — задел под 3.4
     }
   }
 

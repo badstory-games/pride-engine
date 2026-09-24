@@ -24,6 +24,7 @@ import { LayersPanel } from './editor/layers-panel.js';
 import { Tabs } from './editor/tabs.js';
 import { EventSheetPanel } from './editor/event-sheet-panel.js';
 import { EventPalette }     from './editor/event-palette.js';
+import { VarsPanel } from './editor/vars-panel.js';
 
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
 
@@ -78,7 +79,7 @@ async function main() {
 
   // --- Сцена / проект / редактор ---
   const scene   = new Scene();
-  const project = { scene, sheet: null, vars: {} };
+  const project = { scene, sheet: null, vars: {}, varsInitial: {} };
   const editor  = new Editor(scene);
   const controller = new EditorController(canvas, camera, editor);
   const bridge  = new PhysicsBridge(scene);
@@ -184,9 +185,9 @@ async function main() {
   }
 
   // --- Event sheet (default или загруженный) ---
-  if (!project.sheet) {
-    project.sheet = defaultEventSheet();
-  }
+  if (!project.sheet)       project.sheet       = defaultEventSheet();
+  if (!project.vars)        project.vars        = {};
+  if (!project.varsInitial) project.varsInitial = { ...project.vars };
   eventRuntime.setSheet(project.sheet);
 
   // --- Event Sheet view ---
@@ -223,6 +224,13 @@ async function main() {
   );
   eventPalette.attachDnD();
 
+  const varsPanel = new VarsPanel(
+    document.getElementById('vars-panel'),
+    project
+  );
+  varsPanel.onChange = () => scheduleSave();
+  varsPanel.refresh();
+
   // --- View tabs ---
   const eventSheetView = document.getElementById('event-sheet-view');
   const tabs = new Tabs(document.getElementById('view-tabs'), (id) => {
@@ -248,6 +256,7 @@ async function main() {
       if (!project.sheet) project.sheet = defaultEventSheet();
       eventRuntime.setSheet(project.sheet);
       eventSheetPanel.refresh();
+      varsPanel.refresh();
       setIndicator('saved', '✓ loaded');
       editor.onChange();
     } else {
@@ -264,8 +273,10 @@ async function main() {
     scene.nextLayerId = 1;
     project.sheet = defaultEventSheet();
     project.vars = {};
+    project.varsInitial = {};
     eventRuntime.setSheet(project.sheet);
     eventSheetPanel.refresh();
+    varsPanel.refresh();
     editor.clearSelection();
     setIndicator('dirty', '● new');
     editor.onChange();
@@ -290,10 +301,17 @@ async function main() {
 
   function doPlay() {
     if (!bridge.running) {
+      // Сброс runtime-переменных из initial
+      for (const k of Object.keys(project.vars)) delete project.vars[k];
+      Object.assign(project.vars, project.varsInitial);
+
       bridge.start();
       editor.locked = true;
       editor.clearSelection();
       input.clear();
+
+      varsPanel.setRunning(true);
+      varsPanel.refresh();
       console.log('[play] bodies:', bridge.bodiesCount);
     } else if (bridge.paused) {
       bridge.resume();
@@ -308,10 +326,18 @@ async function main() {
 
   function doStop() {
     if (bridge.running) bridge.stop();
+
+    // Возврат vars к initial
+    for (const k of Object.keys(project.vars)) delete project.vars[k];
+    Object.assign(project.vars, project.varsInitial);
+
     editor.locked = false;
     eventRuntime.reset();
     input.clear();
     refreshPlayButtons();
+
+    varsPanel.setRunning(false);
+    varsPanel.refresh();
     editor.onChange();
   }
 
@@ -336,6 +362,7 @@ async function main() {
     refreshToolButtons();
     inspector.refresh();
     layersPanel.refresh();
+    varsPanel.refresh();
     scheduleSave();
   };
 
@@ -413,13 +440,25 @@ async function main() {
       lastStatus = now;
       const w = controller.mouseWorld;
       const state = bridge.running ? (bridge.paused ? 'PAUSED' : 'PLAYING') : 'EDITING';
+      
+      const varsPreview = Object.keys(project.vars)
+        .slice(0, 4)
+        .map((k) => `${k}=${project.vars[k]}`)
+        .join(' ');
+      const varsStr = varsPreview ? `  |  ${varsPreview}` : '';
+      
       statusEl.textContent =
         `Tool: ${editor.tool}  |  ` +
         `Camera: (${camera.x.toFixed(0)}, ${camera.y.toFixed(0)})  |  ` +
         `Zoom: ${camera.zoom.toFixed(2)}×  |  ` +
         `Mouse: (${w.x.toFixed(0)}, ${w.y.toFixed(0)})  |  ` +
         `Selected: ${editor.selection.size}/${scene.objects.length}  |  ` +
-        `Bodies: ${bridge.bodiesCount}  |  ${state}`;
+        `Bodies: ${bridge.bodiesCount}  |  ${state}` +
+        varsStr;
+              // Обновляем панель переменных во время игры — иначе значения не видны
+      if (bridge.running && !bridge.paused) {
+        varsPanel.updateCurrent();
+      }
     }
   }
 

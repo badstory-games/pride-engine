@@ -1,4 +1,5 @@
 import { registry } from '../engine/events/registry.js';
+import { EventPopover } from './event-popover.js';
 
 const KEY_OPTIONS = [
   'Space', 'Enter', 'Escape', 'Tab',
@@ -15,6 +16,7 @@ export class EventSheetPanel {
     this.runtime = eventRuntime;
     this.scene = scene;
     this.onChange = () => {};
+    this.popover = new EventPopover();
 
     container.innerHTML = `
       <div class="es-toolbar">
@@ -45,10 +47,44 @@ export class EventSheetPanel {
   _getSheet() { return this.project.sheet; }
 
   // ============================================================
+  // UID (стабильная идентификация инстансов условий/действий)
+  // ============================================================
+
+  _nextUid(sheet) {
+    let max = 0;
+    const walk = (arr) => {
+      for (const ev of arr) {
+        for (const c of (ev.conditions || [])) if (c.uid > max) max = c.uid;
+        for (const a of (ev.actions    || [])) if (a.uid > max) max = a.uid;
+        if (ev.children) walk(ev.children);
+      }
+    };
+    walk(sheet.events);
+    return max + 1;
+  }
+
+  /** Проставляет uid всем инстансам условий/действий без uid. Идемпотентно. */
+  _ensureUids() {
+    const sheet = this._getSheet();
+    if (!sheet) return;
+    let counter = this._nextUid(sheet);
+    const walk = (arr) => {
+      for (const ev of arr) {
+        for (const c of (ev.conditions || [])) if (!c.uid) c.uid = counter++;
+        for (const a of (ev.actions    || [])) if (!a.uid) a.uid = counter++;
+        if (ev.children) walk(ev.children);
+      }
+    };
+    walk(sheet.events);
+  }
+
+  // ============================================================
   // RENDER
   // ============================================================
 
   _render() {
+    this._ensureUids();
+
     const sheet = this._getSheet();
     if (!sheet || !sheet.events.length) {
       this.listEl.innerHTML =
@@ -61,7 +97,7 @@ export class EventSheetPanel {
 
   _renderEvent(event, depth) {
     const wrap = document.createElement('div');
-    wrap.className = 'es-event';
+    wrap.className = 'es-event' + (event.disabled ? ' disabled' : '');
     wrap.dataset.eventId = event.id;
     wrap.style.marginLeft = (depth * 24) + 'px';
     wrap.draggable = true;
@@ -69,6 +105,11 @@ export class EventSheetPanel {
     const head = document.createElement('div');
     head.className = 'es-head';
     head.innerHTML = `
+      <label class="es-head-enable" title="Enable / disable event">
+        <input type="checkbox" data-action="toggle-enable"
+          ${event.disabled ? '' : 'checked'}>
+        <span></span>
+      </label>
       <span class="es-event-id">#${event.id}</span>
       <div class="es-head-actions">
         <button class="es-mini" data-action="add-condition" title="Добавить условие">+ if</button>
@@ -126,13 +167,14 @@ export class EventSheetPanel {
 
     const row = document.createElement('div');
     row.className = 'es-row es-row-' + kind;
-    row.dataset.rowKind = kind;
-    row.dataset.rowType = item.type;
+    row.dataset.rowKind  = kind;
+    row.dataset.rowType  = item.type;
+    row.dataset.rowUid   = String(item.uid);
     row.dataset.eventId  = eventId;
     row.draggable = true;
 
     const paramsHtml = def
-      ? def.params.map((p) => this._renderParam(kind, item.type, p, item.params?.[p.id])).join('')
+      ? def.params.map((p) => this._renderParam(kind, item.uid, item.type, p, item.params?.[p.id])).join('')
       : `<span class="es-param-error">unknown type: ${item.type}</span>`;
 
     row.innerHTML = `
@@ -144,9 +186,9 @@ export class EventSheetPanel {
     return row;
   }
 
-  _renderParam(kind, ownerType, def, value) {
+  _renderParam(kind, uid, ownerType, def, value) {
     const val = value !== undefined ? value : def.default;
-    const key = `${kind}:${ownerType}:${def.id}`;
+    const key = `${kind}:${uid}:${def.id}`;
 
     if (def.type === 'number') {
       return `<label class="es-param"><span>${def.label}</span>
@@ -168,13 +210,38 @@ export class EventSheetPanel {
       return `<label class="es-param"><span>${def.label}</span>
         <select data-param="${key}">${opts}</select></label>`;
     }
+    if (def.type === 'varname') {
+      const names = Object.keys(this.project.vars || {});
+      const opts = names.map((n) =>
+        `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
+      const extra = names.includes(val)
+        ? ''
+        : `<option value="${val}" selected>${val} (нет)</option>`;
+      return `<label class="es-param"><span>${def.label}</span>
+        <select data-param="${key}">${extra}${opts}</select></label>`;
+    }
     if (def.type === 'target') {
       const names = new Set(['*']);
       for (const o of this.scene.objects) if (o.name) names.add(o.name);
+
+      const inList = names.has(val);
       const opts = [...names].map((n) =>
         `<option value="${n}"${n === val ? ' selected' : ''}>${n === '*' ? '* (all dynamic)' : n}</option>`).join('');
+      const extra = inList ? '' :
+        `<option value="${val}" selected>${val} (нет в сцене)</option>`;
+
       return `<label class="es-param"><span>${def.label}</span>
-        <select data-param="${key}">${opts}</select></label>`;
+        <select data-param="${key}">${extra}${opts}</select></label>`;
+    }
+    if (def.type === 'varname') {
+      const names = Object.keys(this.project.vars || {});
+      const inList = names.includes(val);
+      const opts = names.map((n) =>
+        `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
+      const extra = inList ? '' :
+        `<option value="${val}" selected>${val} (нет)</option>`;
+      return `<label class="es-param"><span>${def.label}</span>
+        <select data-param="${key}">${extra}${opts}</select></label>`;
     }
     return `<span class="es-param-unknown">?</span>`;
   }
@@ -193,7 +260,7 @@ export class EventSheetPanel {
         e.dataTransfer.setData('application/x-es-row', JSON.stringify({
           eventId: +row.dataset.eventId,
           kind:    row.dataset.rowKind,
-          type:    row.dataset.rowType,
+          uid:     +row.dataset.rowUid,
         }));
         row.classList.add('dragging');
         return;
@@ -202,6 +269,7 @@ export class EventSheetPanel {
       const ev = e.target.closest('.es-event');
       if (ev) {
         if (e.target.closest('.es-head-actions') ||
+            e.target.closest('.es-head-enable') ||
             e.target.closest('.es-row') ||
             e.target.closest('input, select, button')) {
           e.preventDefault();
@@ -274,7 +342,7 @@ export class EventSheetPanel {
         const toKind    = section.dataset.dropTarget;
         const fromKind  = data.kind === 'cond' ? 'conditions' : 'actions';
         if (toKind === fromKind && data.eventId !== toEventId) {
-          this._moveRow(data.eventId, data.kind, data.type, toEventId);
+          this._moveRow(data.eventId, data.kind, data.uid, toEventId);
         }
         this._clearDropHighlight();
         return;
@@ -312,7 +380,10 @@ export class EventSheetPanel {
 
     const params = {};
     for (const p of (def.params || [])) params[p.id] = p.default;
-    const item = { type, params };
+
+    const sheet = this._getSheet();
+    const uid = this._nextUid(sheet);
+    const item = { uid, type, params };
 
     if (isCond) {
       event.conditions = event.conditions || [];
@@ -327,7 +398,7 @@ export class EventSheetPanel {
     this.onChange();
   }
 
-  _moveRow(fromEventId, kind, type, toEventId) {
+  _moveRow(fromEventId, kind, uid, toEventId) {
     const from = this._findEvent(fromEventId);
     const to   = this._findEvent(toEventId);
     if (!from || !to) return;
@@ -335,7 +406,7 @@ export class EventSheetPanel {
     const arrName = kind === 'cond' ? 'conditions' : 'actions';
     const arr = from[arrName];
     if (!arr) return;
-    const idx = arr.findIndex((x) => x.type === type);
+    const idx = arr.findIndex((x) => x.uid === uid);
     if (idx < 0) return;
 
     const [item] = arr.splice(idx, 1);
@@ -372,8 +443,8 @@ export class EventSheetPanel {
 
     switch (action) {
       case 'add-event':     this._addEvent(null); break;
-      case 'add-condition': this._openPicker('conditions', eventId); break;
-      case 'add-action':    this._openPicker('actions', eventId); break;
+      case 'add-condition': this._openPopover(btn, 'conditions', eventId); break;
+      case 'add-action':    this._openPopover(btn, 'actions', eventId); break;
       case 'add-child':     this._addEvent(eventId); break;
       case 'duplicate':     this._duplicateEvent(eventId); break;
       case 'delete':
@@ -381,40 +452,46 @@ export class EventSheetPanel {
         break;
       case 'del-condition': {
         const row = btn.closest('.es-row');
-        this._deleteRow(eventId, 'cond', row.dataset.rowType);
+        this._deleteRow(eventId, 'cond', +row.dataset.rowUid);
         break;
       }
       case 'del-action': {
         const row = btn.closest('.es-row');
-        this._deleteRow(eventId, 'action', row.dataset.rowType);
+        this._deleteRow(eventId, 'action', +row.dataset.rowUid);
         break;
       }
     }
   }
 
-  _openPicker(kind, eventId) {
-    const map = kind === 'conditions' ? registry.conditions : registry.actions;
-    const items = map.all();
-    const names = items.map((i) => `${i.category}/${i.label}`).join('\n');
-    const typed = prompt(`Введите ID (${kind}):\n\n${names}`, items[0]?.id || '');
-    if (!typed) return;
-    if (!map.get(typed)) { alert('Не найдено: ' + typed); return; }
+  _openPopover(anchorBtn, kind, eventId) {
+    // Не даём popover закрыться сразу же от текущего клика
+    this.popover.open(anchorBtn, kind, (type) => {
+      const map = kind === 'conditions' ? registry.conditions : registry.actions;
+      const def = map.get(type);
+      if (!def) return;
 
-    const event = this._findEvent(eventId);
-    if (!event) return;
-    const def = map.get(typed);
-    const params = {};
-    for (const p of (def.params || [])) params[p.id] = p.default;
-    if (kind === 'conditions') {
-      event.conditions = event.conditions || [];
-      event.conditions.push({ type: typed, params });
-    } else {
-      event.actions = event.actions || [];
-      event.actions.push({ type: typed, params });
-    }
-    this._recompile();
-    this.refresh();
-    this.onChange();
+      const event = this._findEvent(eventId);
+      if (!event) return;
+
+      const params = {};
+      for (const p of (def.params || [])) params[p.id] = p.default;
+
+      const sheet = this._getSheet();
+      const uid = this._nextUid(sheet);
+      const item = { uid, type, params };
+
+      if (kind === 'conditions') {
+        event.conditions = event.conditions || [];
+        event.conditions.push(item);
+      } else {
+        event.actions = event.actions || [];
+        event.actions.push(item);
+      }
+
+      this._recompile();
+      this.refresh();
+      this.onChange();
+    });
   }
 
   _onInput(e) {
@@ -424,6 +501,19 @@ export class EventSheetPanel {
   }
 
   _onChangeEl(e) {
+    // Toggle enable события
+    if (e.target.matches('[data-action="toggle-enable"]')) {
+      const wrap = e.target.closest('.es-event');
+      const eventId = +wrap.dataset.eventId;
+      const event = this._findEvent(eventId);
+      if (!event) return;
+      event.disabled = !e.target.checked;
+      wrap.classList.toggle('disabled', !!event.disabled);
+      this._recompile();
+      this.onChange();
+      return;
+    }
+
     const sel = e.target.closest('select[data-param]');
     if (!sel) return;
     this._applyParam(sel);
@@ -431,7 +521,8 @@ export class EventSheetPanel {
 
   _applyParam(el) {
     const key = el.dataset.param;
-    const [kind, ownerType, paramId] = key.split(':');
+    const [kind, uidStr, paramId] = key.split(':');
+    const uid = +uidStr;
     const rawVal = el.type === 'number' ? parseFloat(el.value) : el.value;
 
     const row = el.closest('.es-row');
@@ -439,17 +530,15 @@ export class EventSheetPanel {
     const event = this._findEvent(eventId);
     if (!event) return;
 
-    if (kind === 'cond') {
-      const c = event.conditions.find((x) => x.type === ownerType);
-      if (!c) return;
-      c.params = c.params || {};
-      c.params[paramId] = rawVal;
-    } else {
-      const a = event.actions.find((x) => x.type === ownerType);
-      if (!a) return;
-      a.params = a.params || {};
-      a.params[paramId] = rawVal;
-    }
+    const arrName = kind === 'cond' ? 'conditions' : 'actions';
+    const arr = event[arrName];
+    if (!arr) return;
+
+    const item = arr.find((x) => x.uid === uid);
+    if (!item) return;
+
+    item.params = item.params || {};
+    item.params[paramId] = rawVal;
 
     this._recompile();
     this.onChange();
@@ -476,11 +565,17 @@ export class EventSheetPanel {
     const sheet = this._getSheet();
     const original = this._findEvent(eventId);
     if (!original) return;
+
     const clone = JSON.parse(JSON.stringify(original));
-    this._reassignIds(clone, { next: this._nextId(sheet) });
+    // Переназначаем id событий; uid условий/действий очищаем —
+    // _ensureUids выдаст им новые при следующем рендере.
+    this._reassignEventIds(clone, { next: this._nextId(sheet) });
+    this._clearUids(clone);
+
     const insertion = this._findParentArray(sheet, eventId);
     if (!insertion) return;
     insertion.arr.splice(insertion.idx + 1, 0, clone);
+
     this._recompile();
     this.refresh();
     this.onChange();
@@ -496,11 +591,14 @@ export class EventSheetPanel {
     this.onChange();
   }
 
-  _deleteRow(eventId, kind, type) {
+  _deleteRow(eventId, kind, uid) {
     const event = this._findEvent(eventId);
     if (!event) return;
-    if (kind === 'cond') event.conditions = event.conditions.filter((c) => c.type !== type);
-    else                 event.actions    = event.actions.filter((a) => a.type !== type);
+    if (kind === 'cond') {
+      event.conditions = event.conditions.filter((c) => c.uid !== uid);
+    } else {
+      event.actions = event.actions.filter((a) => a.uid !== uid);
+    }
     this._recompile();
     this.refresh();
     this.onChange();
@@ -549,9 +647,15 @@ export class EventSheetPanel {
     return max + 1;
   }
 
-  _reassignIds(event, counter) {
+  _reassignEventIds(event, counter) {
     event.id = counter.next++;
-    if (event.children) for (const c of event.children) this._reassignIds(c, counter);
+    if (event.children) for (const c of event.children) this._reassignEventIds(c, counter);
+  }
+
+  _clearUids(event) {
+    for (const c of (event.conditions || [])) delete c.uid;
+    for (const a of (event.actions    || [])) delete a.uid;
+    for (const ch of (event.children  || [])) this._clearUids(ch);
   }
 
   _recompile() {
