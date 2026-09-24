@@ -6,8 +6,8 @@ export class Inspector {
     this.fields = {};
     this.textures = [];
 
-    this._layersSig = '';      // подпись текущего состава слоёв
-    this._texturesSig = '';    // подпись текущего состава текстур
+    this._layersSig = '';
+    this._texturesSig = '';
 
     this._build();
     this.container.addEventListener('input', (e) => this._onFieldChange(e));
@@ -15,7 +15,6 @@ export class Inspector {
 
   setTextures(list) {
     this.textures = list;
-    // форсируем пересборку опций текстур на следующем refresh
     this._texturesSig = '';
   }
 
@@ -62,7 +61,6 @@ export class Inspector {
     form.appendChild(visRow);
     this.fields.visible = visRow.querySelector('input');
 
-        // ----- Physics section -----
     const physTitle = document.createElement('div');
     physTitle.className = 'inspector-section-title';
     physTitle.textContent = 'Physics';
@@ -81,7 +79,6 @@ export class Inspector {
     this._numField   (form, 'physRestitution', 'Restitution', { min: 0, max: 1, step: 0.05 });
     this._numField   (form, 'physRadius',      'Radius',      { min: 1, step: 1 });
 
-    // Заполнить опции select'ов
     const fillSelect = (sel, values) => {
       sel.innerHTML = '';
       for (const v of values) {
@@ -195,7 +192,6 @@ export class Inspector {
     const first = this.scene.get(sel[0]);
     if (!first) return;
 
-    // Опции пересобираются только при изменении состава, не на каждый refresh.
     this._ensureLayerOptions();
     this._ensureTextureOptions();
 
@@ -233,11 +229,9 @@ export class Inspector {
     setVal2('physRestitution', ph.restitution ?? 0.2);
     setVal2('physRadius',      ph.radius      ?? 32);
 
-    // Показать Radius только для circle
     const radiusRow = this.fields.physRadius.closest('.inspector-row');
     if (radiusRow) radiusRow.style.display = (ph.shape === 'circle') ? '' : 'none';
 
-    // Блокировка физических полей, если physics выключен
     const disabled = !ph.enabled;
     for (const p of this._physFields) {
       this.fields[p].disabled = disabled;
@@ -249,69 +243,73 @@ export class Inspector {
     if (!prop) return;
 
     const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+    const h = this.editor.history;
 
-    for (const id of this.editor.selection) {
-      const obj = this.scene.get(id);
-      if (!obj) continue;
+    const apply = () => {
+      for (const id of this.editor.selection) {
+        const obj = this.scene.get(id);
+        if (!obj) continue;
 
-      switch (prop) {
-        case 'name':
-          obj.name = String(value) || 'Object';
-          break;
-        case 'x':
-        case 'y':
-        case 'width':
-        case 'height': {
-          const n = parseFloat(value);
-          if (Number.isFinite(n)) obj[prop] = n;
-          break;
-        }
-        case 'rotationDeg': {
-          const deg = parseFloat(value);
-          if (Number.isFinite(deg)) obj.rotation = deg * Math.PI / 180;
-          break;
-        }
-        case 'opacity': {
-          const n = parseFloat(value);
-          if (Number.isFinite(n)) obj.opacity = Math.min(1, Math.max(0, n));
-          break;
-        }
-        case 'layerId':
-          obj.layerId = value;
-          break;
-        case 'textureId':
-          obj.textureId = value || null;
-          break;
-                case 'physEnabled':
-          obj.physics = obj.physics || {};
-          obj.physics.enabled = value;
-          break;
-        case 'physType':
-          obj.physics = obj.physics || {};
-          obj.physics.type = value;
-          break;
-        case 'physShape':
-          obj.physics = obj.physics || {};
-          obj.physics.shape = value;
-          break;
-        case 'physDensity':
-        case 'physFriction':
-        case 'physRestitution':
-        case 'physRadius': {
-          const key = prop.replace('phys', '').toLowerCase();
-          const n = parseFloat(value);
-          if (Number.isFinite(n)) {
-            obj.physics = obj.physics || {};
-            obj.physics[key] = n;
+        switch (prop) {
+          case 'name':
+            obj.name = String(value) || 'Object';
+            break;
+          case 'x':
+          case 'y':
+          case 'width':
+          case 'height': {
+            const n = parseFloat(value);
+            if (Number.isFinite(n)) obj[prop] = n;
+            break;
           }
-          break;
+          case 'rotationDeg': {
+            const deg = parseFloat(value);
+            if (Number.isFinite(deg)) obj.rotation = deg * Math.PI / 180;
+            break;
+          }
+          case 'opacity': {
+            const n = parseFloat(value);
+            if (Number.isFinite(n)) obj.opacity = Math.min(1, Math.max(0, n));
+            break;
+          }
+          case 'layerId':
+            obj.layerId = value;
+            break;
+          case 'textureId':
+            obj.textureId = value || null;
+            break;
+          case 'physEnabled':
+            obj.physics = obj.physics || {};
+            obj.physics.enabled = value;
+            break;
+          case 'physType':
+            obj.physics = obj.physics || {};
+            obj.physics.type = value;
+            break;
+          case 'physShape':
+            obj.physics = obj.physics || {};
+            obj.physics.shape = value;
+            break;
+          case 'physDensity':
+          case 'physFriction':
+          case 'physRestitution':
+          case 'physRadius': {
+            const key = prop.replace('phys', '').toLowerCase();
+            const n = parseFloat(value);
+            if (Number.isFinite(n)) {
+              obj.physics = obj.physics || {};
+              obj.physics[key] = n;
+            }
+            break;
+          }
+          case 'visible':
+            obj.visible = value;
+            break;
         }
-        case 'visible':
-          obj.visible = value;
-          break;
       }
-    }
+      this.editor.onChange();
+    };
 
-    this.editor.onChange();
+    if (h) h.run('Inspector: ' + prop, apply); else apply();
   }
 }

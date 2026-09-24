@@ -25,6 +25,7 @@ import { Tabs } from './editor/tabs.js';
 import { EventSheetPanel } from './editor/event-sheet-panel.js';
 import { EventPalette }     from './editor/event-palette.js';
 import { VarsPanel } from './editor/vars-panel.js';
+import { History } from './editor/history.js';
 
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
 import { serializeProject, deserializeProject } from './project/serializer.js';
@@ -50,7 +51,7 @@ async function main() {
 
   const assets = new AssetManager(renderer.device);
 
-  // --- 1×1 белая текстура ---
+  // 1×1 белая
   {
     const img = new ImageData(1, 1);
     img.data.set([255, 255, 255, 255]);
@@ -58,7 +59,7 @@ async function main() {
     assets.loadFromBitmap('__white', bmp);
   }
 
-  // --- player.png ---
+  // player.png
   try {
     const a = await assets.loadPNG('player', './assets/player.png');
     console.log(`[assets] player.png ${a.width}×${a.height}`);
@@ -187,7 +188,7 @@ async function main() {
     setIndicator('saved', '✓ ready');
   }
 
-  // --- Event sheet (default или загруженный) ---
+  // --- Event sheet ---
   if (!project.sheet)       project.sheet       = defaultEventSheet();
   if (!project.vars)        project.vars        = {};
   if (!project.varsInitial) project.varsInitial = { ...project.vars };
@@ -211,15 +212,21 @@ async function main() {
       const map = kind === 'conditions' ? registry.conditions : registry.actions;
       const def = map.get(type);
       if (!def) return;
-      const params = {};
-      for (const p of (def.params || [])) params[p.id] = p.default;
-      if (kind === 'conditions') {
-        first.conditions = first.conditions || [];
-        first.conditions.push({ type, params });
-      } else {
-        first.actions = first.actions || [];
-        first.actions.push({ type, params });
-      }
+
+      const h = editor.history;
+      const apply = () => {
+        const params = {};
+        for (const p of (def.params || [])) params[p.id] = p.default;
+        if (kind === 'conditions') {
+          first.conditions = first.conditions || [];
+          first.conditions.push({ type, params });
+        } else {
+          first.actions = first.actions || [];
+          first.actions.push({ type, params });
+        }
+      };
+      if (h) h.run('Add ' + kind, apply); else apply();
+
       eventRuntime.setSheet(sheet);
       eventSheetPanel.refresh();
       scheduleSave();
@@ -233,6 +240,60 @@ async function main() {
   );
   varsPanel.onChange = () => scheduleSave();
   varsPanel.refresh();
+
+  // ============================================================
+  // Undo / Redo
+  // ============================================================
+
+  const btnUndo = document.getElementById('btn-undo');
+  const btnRedo = document.getElementById('btn-redo');
+
+  const history = new History({
+    snapshotFn: () => structuredClone({
+      scene: scene.toJSON(),
+      sheet: project.sheet,
+      varsInitial: project.varsInitial,
+      selection: [...editor.selection],
+    }),
+    restoreFn: (state) => {
+      const s = structuredClone(state);
+
+      scene.fromJSON(s.scene);
+      project.sheet       = s.sheet;
+      project.varsInitial = s.varsInitial;
+      // project.vars — runtime, его не трогаем.
+
+      editor.selection.clear();
+      for (const id of s.selection) editor.selection.add(id);
+
+      eventRuntime.setSheet(project.sheet);
+      eventSheetPanel.refresh();
+      varsPanel.refresh();
+      inspector.refresh();
+      layersPanel.refresh();
+      scheduleSave();
+    },
+    limit: 100,
+    isLocked: () => editor.locked,
+  });
+
+  editor.history          = history;
+  varsPanel.history       = history;
+  eventSheetPanel.history = history;
+
+  function refreshUndoButtons() {
+    if (!btnUndo || !btnRedo) return;
+    btnUndo.disabled = !history.canUndo() || editor.locked;
+    btnRedo.disabled = !history.canRedo() || editor.locked;
+  }
+
+  history.onChange = () => refreshUndoButtons();
+
+  btnUndo.addEventListener('click', () => history.undo());
+  btnRedo.addEventListener('click', () => history.redo());
+
+  // Первичный snapshot — после инициализации сцены/листа.
+  history.init();
 
   // --- View tabs ---
   const eventSheetView = document.getElementById('event-sheet-view');
@@ -262,6 +323,7 @@ async function main() {
       varsPanel.refresh();
       setIndicator('saved', '✓ loaded');
       editor.onChange();
+      history.init();          // перезагрузка → обнуляем историю
     } else {
       setIndicator('error', '✕ load error');
     }
@@ -283,6 +345,7 @@ async function main() {
     editor.clearSelection();
     setIndicator('dirty', '● new');
     editor.onChange();
+    history.init();            // новый проект → обнуляем историю
   });
 
   // --- File I/O: .pride + export ---
@@ -316,6 +379,7 @@ async function main() {
       editor.clearSelection();
       editor.onChange();
       setIndicator('saved', '✓ .pride loaded');
+      history.init();          // перезагрузка → обнуляем историю
     } catch (e) {
       console.error('[open .pride]', e);
       setIndicator('error', '✕ load error');
@@ -329,7 +393,7 @@ async function main() {
       const html = await exportWebGame(project, {
         title: 'Pride Game',
         debugDraw: false,
-        assetManager: assets,   // ← именно assets (локальная переменная)
+        assetManager: assets,
       });
       downloadText(html, 'game.html', 'text/html;charset=utf-8');
       setIndicator('saved', '✓ exported');
@@ -359,6 +423,7 @@ async function main() {
     btnStop.disabled  = !bridge.running;
     btnPause.disabled = !bridge.running;
     btnDebug.classList.toggle('toggled', debugDraw);
+    refreshUndoButtons();
   }
 
   function doPlay() {
@@ -411,7 +476,24 @@ async function main() {
 
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+
+    const tag = document.activeElement && document.activeElement.tagName;
+    const inField = tag === 'INPUT' || tag === 'TEXTAREA';
+
     const mod = e.ctrlKey || e.metaKey;
+
+    // Undo / Redo — только когда курсор не в поле ввода,
+    // чтобы не отбирать системный undo у input'а.
+    if (mod && e.code === 'KeyZ' && !inField) {
+      e.preventDefault();
+      if (e.shiftKey) history.redo(); else history.undo();
+      return;
+    }
+    if (mod && e.code === 'KeyY' && !inField) {
+      e.preventDefault();
+      history.redo();
+      return;
+    }
 
     if (mod && e.code === 'KeyS') { e.preventDefault(); doSavePride();  return; }
     if (mod && e.code === 'KeyO') { e.preventDefault(); doOpenPride();  return; }
@@ -423,8 +505,9 @@ async function main() {
   });
 
   refreshPlayButtons();
+  refreshUndoButtons();
 
-  // --- onChange: единая точка обновления UI ---
+  // --- onChange ---
   editor.onChange = () => {
     refreshToolButtons();
     inspector.refresh();
@@ -520,7 +603,8 @@ async function main() {
         `Zoom: ${camera.zoom.toFixed(2)}×  |  ` +
         `Mouse: (${w.x.toFixed(0)}, ${w.y.toFixed(0)})  |  ` +
         `Selected: ${editor.selection.size}/${scene.objects.length}  |  ` +
-        `Bodies: ${bridge.bodiesCount}  |  ${state}` +
+        `Bodies: ${bridge.bodiesCount}  |  ${state}  |  ` +
+        `Undo: ${history.index}/${history.stack.length - 1}` +
         varsStr;
 
       if (bridge.running && !bridge.paused) {

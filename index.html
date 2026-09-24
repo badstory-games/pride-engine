@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Pride Engine — Stage 4.3</title>
+<title>Pride Engine</title>
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -20,6 +20,10 @@
       <button id="btn-open-pride" class="topbtn" title="Открыть .pride">⇧ .pride</button>
       <button id="btn-export"     class="topbtn" title="Экспорт в HTML">⤓ Game</button>
     </div>
+    <div class="topbar-group">
+      <button id="btn-undo" class="topbtn" title="Undo (Ctrl+Z)" disabled>↶</button>
+      <button id="btn-redo" class="topbtn" title="Redo (Ctrl+Shift+Z / Ctrl+Y)" disabled>↷</button>
+    </div>
     <span id="save-indicator" class="save-indicator">—</span>
 
     <div id="play-controls">
@@ -29,10 +33,7 @@
       <button id="btn-debug" class="playbtn" title="Debug draw">◎</button>
     </div>
 
-    <span class="stage">Stage 5 — File I/O / Export</span>
-  </header>
-
-    <span class="stage">Stage 5 — File I/O / Export</span>
+    <span class="stage">Stage 6.1 — Undo / Redo</span>
   </header>
 
   <div id="main">
@@ -125,6 +126,8 @@
         <table class="sc-table">
           <tr><td><kbd>Drag</kbd> по объекту</td><td>Переместить (группой)</td></tr>
           <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Удалить выделенное</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Redo</td></tr>
         </table>
       </section>
       <section>

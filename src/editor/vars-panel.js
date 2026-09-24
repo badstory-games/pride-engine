@@ -4,6 +4,8 @@ export class VarsPanel {
     this.project = project;
     this.onChange = () => {};
     this.running = false;
+    /** @type {import('./history.js').History|null} */
+    this.history = null;
 
     container.innerHTML = `
       <header class="vars-header">
@@ -29,7 +31,6 @@ export class VarsPanel {
     this._render();
   }
 
-  /** Обновляет только колонку Current — вызывается часто во время Play. */
   updateCurrent() {
     if (!this.running) return;
     const vars = this.project.vars || {};
@@ -50,7 +51,6 @@ export class VarsPanel {
     const names = Object.keys(initial);
     this.listEl.innerHTML = '';
 
-    // Шапка
     const head = document.createElement('div');
     head.className = 'vars-row vars-row-head';
     head.innerHTML = `
@@ -101,12 +101,17 @@ export class VarsPanel {
   }
 
   _onClick(e) {
+    const h = this.history;
+
     const add = e.target.closest('[data-action="add"]');
     if (add) {
-      let n = 1;
-      while (this.project.varsInitial['var' + n] !== undefined) n++;
-      this.project.varsInitial['var' + n] = 0;
-      this.project.vars['var' + n] = 0;
+      const apply = () => {
+        let n = 1;
+        while (this.project.varsInitial['var' + n] !== undefined) n++;
+        this.project.varsInitial['var' + n] = 0;
+        this.project.vars['var' + n] = 0;
+      };
+      if (h) h.run('Add variable', apply); else apply();
       this.refresh();
       this.onChange();
       return;
@@ -116,8 +121,11 @@ export class VarsPanel {
     if (del) {
       const row = del.closest('.vars-row');
       const name = row.dataset.name;
-      delete this.project.varsInitial[name];
-      delete this.project.vars[name];
+      const apply = () => {
+        delete this.project.varsInitial[name];
+        delete this.project.vars[name];
+      };
+      if (h) h.run('Delete variable', apply); else apply();
       this.refresh();
       this.onChange();
     }
@@ -127,6 +135,7 @@ export class VarsPanel {
     const row = e.target.closest('.vars-row');
     if (!row || row.classList.contains('vars-row-head')) return;
     const oldName = row.dataset.name;
+    const h = this.history;
 
     // --- Переименование ---
     if (e.target.classList.contains('vars-name')) {
@@ -138,10 +147,13 @@ export class VarsPanel {
         return;
       }
 
-      this.project.varsInitial[newName] = this.project.varsInitial[oldName];
-      this.project.vars[newName]        = this.project.vars[oldName];
-      delete this.project.varsInitial[oldName];
-      delete this.project.vars[oldName];
+      const apply = () => {
+        this.project.varsInitial[newName] = this.project.varsInitial[oldName];
+        this.project.vars[newName]        = this.project.vars[oldName];
+        delete this.project.varsInitial[oldName];
+        delete this.project.vars[oldName];
+      };
+      if (h) h.run('Rename variable', apply); else apply();
 
       row.dataset.name = newName;
       this.onChange();
@@ -153,15 +165,16 @@ export class VarsPanel {
       const n = parseFloat(e.target.value);
       if (!Number.isFinite(n)) return;
 
-      this.project.varsInitial[oldName] = n;
+      const apply = () => {
+        this.project.varsInitial[oldName] = n;
+        if (!this.running) this.project.vars[oldName] = n;
+      };
+      if (h) h.run('Set var initial', apply); else apply();
 
-      // Вне Play — сразу применяем к Current
       if (!this.running) {
-        this.project.vars[oldName] = n;
         const cur = row.querySelector('.vars-current');
         if (cur) cur.textContent = n;
       }
-
       this.onChange();
     }
   }

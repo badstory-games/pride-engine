@@ -17,6 +17,8 @@ export class EventSheetPanel {
     this.scene = scene;
     this.onChange = () => {};
     this.popover = new EventPopover();
+    /** @type {import('./history.js').History|null} */
+    this.history = null;
 
     container.innerHTML = `
       <div class="es-toolbar">
@@ -47,7 +49,7 @@ export class EventSheetPanel {
   _getSheet() { return this.project.sheet; }
 
   // ============================================================
-  // UID (стабильная идентификация инстансов условий/действий)
+  // UID
   // ============================================================
 
   _nextUid(sheet) {
@@ -63,7 +65,6 @@ export class EventSheetPanel {
     return max + 1;
   }
 
-  /** Проставляет uid всем инстансам условий/действий без uid. Идемпотентно. */
   _ensureUids() {
     const sheet = this._getSheet();
     if (!sheet) return;
@@ -212,11 +213,11 @@ export class EventSheetPanel {
     }
     if (def.type === 'varname') {
       const names = Object.keys(this.project.vars || {});
+      const inList = names.includes(val);
       const opts = names.map((n) =>
         `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
-      const extra = names.includes(val)
-        ? ''
-        : `<option value="${val}" selected>${val} (нет)</option>`;
+      const extra = inList ? '' :
+        `<option value="${val}" selected>${val} (нет)</option>`;
       return `<label class="es-param"><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
@@ -233,7 +234,6 @@ export class EventSheetPanel {
       return `<label class="es-param"><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
-    
     return `<span class="es-param-unknown">?</span>`;
   }
 
@@ -361,28 +361,32 @@ export class EventSheetPanel {
   // ============================================================
 
   _addFromPalette(eventId, kind, type, target) {
-    const event = this._findEvent(eventId);
-    if (!event) return;
-    const isCond = kind === 'conditions';
-    if (isCond !== (target === 'conditions')) return;
+    const h = this.history;
+    const apply = () => {
+      const event = this._findEvent(eventId);
+      if (!event) return;
+      const isCond = kind === 'conditions';
+      if (isCond !== (target === 'conditions')) return;
 
-    const def = isCond ? registry.conditions.get(type) : registry.actions.get(type);
-    if (!def) return;
+      const def = isCond ? registry.conditions.get(type) : registry.actions.get(type);
+      if (!def) return;
 
-    const params = {};
-    for (const p of (def.params || [])) params[p.id] = p.default;
+      const params = {};
+      for (const p of (def.params || [])) params[p.id] = p.default;
 
-    const sheet = this._getSheet();
-    const uid = this._nextUid(sheet);
-    const item = { uid, type, params };
+      const sheet = this._getSheet();
+      const uid = this._nextUid(sheet);
+      const item = { uid, type, params };
 
-    if (isCond) {
-      event.conditions = event.conditions || [];
-      event.conditions.push(item);
-    } else {
-      event.actions = event.actions || [];
-      event.actions.push(item);
-    }
+      if (isCond) {
+        event.conditions = event.conditions || [];
+        event.conditions.push(item);
+      } else {
+        event.actions = event.actions || [];
+        event.actions.push(item);
+      }
+    };
+    if (h) h.run('Add ' + kind, apply); else apply();
 
     this._recompile();
     this.refresh();
@@ -390,19 +394,23 @@ export class EventSheetPanel {
   }
 
   _moveRow(fromEventId, kind, uid, toEventId) {
-    const from = this._findEvent(fromEventId);
-    const to   = this._findEvent(toEventId);
-    if (!from || !to) return;
+    const h = this.history;
+    const apply = () => {
+      const from = this._findEvent(fromEventId);
+      const to   = this._findEvent(toEventId);
+      if (!from || !to) return;
 
-    const arrName = kind === 'cond' ? 'conditions' : 'actions';
-    const arr = from[arrName];
-    if (!arr) return;
-    const idx = arr.findIndex((x) => x.uid === uid);
-    if (idx < 0) return;
+      const arrName = kind === 'cond' ? 'conditions' : 'actions';
+      const arr = from[arrName];
+      if (!arr) return;
+      const idx = arr.findIndex((x) => x.uid === uid);
+      if (idx < 0) return;
 
-    const [item] = arr.splice(idx, 1);
-    to[arrName] = to[arrName] || [];
-    to[arrName].push(item);
+      const [item] = arr.splice(idx, 1);
+      to[arrName] = to[arrName] || [];
+      to[arrName].push(item);
+    };
+    if (h) h.run('Move row', apply); else apply();
 
     this._recompile();
     this.refresh();
@@ -410,19 +418,22 @@ export class EventSheetPanel {
   }
 
   _reorderEvent(fromId, toId) {
-    const sheet = this._getSheet();
-    const from = this._findParentArray(sheet, fromId);
-    const to   = this._findParentArray(sheet, toId);
-    if (!from || !to) return;
-    if (from.arr !== to.arr) return;
+    const h = this.history;
+    const apply = () => {
+      const sheet = this._getSheet();
+      const from = this._findParentArray(sheet, fromId);
+      const to   = this._findParentArray(sheet, toId);
+      if (!from || !to) return;
+      if (from.arr !== to.arr) return;
 
-    // ВАЖНО: сохраняем ссылку на целевое событие ДО splice.
-    // Иначе to.idx после удаления указывает уже на другой элемент.
-    const target = to.arr[to.idx];
+      // Ссылку на целевое событие берём ДО splice — иначе to.idx устареет.
+      const target = to.arr[to.idx];
 
-    const [ev] = from.arr.splice(from.idx, 1);
-    const newTo = from.arr.indexOf(target);
-    from.arr.splice(newTo >= 0 ? newTo : to.idx, 0, ev);
+      const [ev] = from.arr.splice(from.idx, 1);
+      const newTo = from.arr.indexOf(target);
+      from.arr.splice(newTo >= 0 ? newTo : to.idx, 0, ev);
+    };
+    if (h) h.run('Reorder event', apply); else apply();
 
     this._recompile();
     this.refresh();
@@ -459,29 +470,32 @@ export class EventSheetPanel {
   }
 
   _openPopover(anchorBtn, kind, eventId) {
-    // Не даём popover закрыться сразу же от текущего клика
     this.popover.open(anchorBtn, kind, (type) => {
       const map = kind === 'conditions' ? registry.conditions : registry.actions;
       const def = map.get(type);
       if (!def) return;
 
-      const event = this._findEvent(eventId);
-      if (!event) return;
+      const h = this.history;
+      const apply = () => {
+        const event = this._findEvent(eventId);
+        if (!event) return;
 
-      const params = {};
-      for (const p of (def.params || [])) params[p.id] = p.default;
+        const params = {};
+        for (const p of (def.params || [])) params[p.id] = p.default;
 
-      const sheet = this._getSheet();
-      const uid = this._nextUid(sheet);
-      const item = { uid, type, params };
+        const sheet = this._getSheet();
+        const uid = this._nextUid(sheet);
+        const item = { uid, type, params };
 
-      if (kind === 'conditions') {
-        event.conditions = event.conditions || [];
-        event.conditions.push(item);
-      } else {
-        event.actions = event.actions || [];
-        event.actions.push(item);
-      }
+        if (kind === 'conditions') {
+          event.conditions = event.conditions || [];
+          event.conditions.push(item);
+        } else {
+          event.actions = event.actions || [];
+          event.actions.push(item);
+        }
+      };
+      if (h) h.run('Add ' + kind, apply); else apply();
 
       this._recompile();
       this.refresh();
@@ -496,14 +510,18 @@ export class EventSheetPanel {
   }
 
   _onChangeEl(e) {
-    // Toggle enable события
     if (e.target.matches('[data-action="toggle-enable"]')) {
       const wrap = e.target.closest('.es-event');
       const eventId = +wrap.dataset.eventId;
+      const h = this.history;
+      const apply = () => {
+        const event = this._findEvent(eventId);
+        if (!event) return;
+        event.disabled = !e.target.checked;
+      };
+      if (h) h.run('Toggle event', apply); else apply();
       const event = this._findEvent(eventId);
-      if (!event) return;
-      event.disabled = !e.target.checked;
-      wrap.classList.toggle('disabled', !!event.disabled);
+      if (event) wrap.classList.toggle('disabled', !!event.disabled);
       this._recompile();
       this.onChange();
       return;
@@ -514,6 +532,8 @@ export class EventSheetPanel {
     this._applyParam(sel);
   }
 
+  // Параметры (числа/строки/селекты) НЕ оборачиваем в undo —
+  // иначе при вводе числа в поле каждая цифра станет отдельной командой.
   _applyParam(el) {
     const key = el.dataset.param;
     const [kind, uidStr, paramId] = key.split(':');
@@ -540,36 +560,43 @@ export class EventSheetPanel {
   }
 
   _addEvent(parentId) {
-    const sheet = this._getSheet();
-    const id = this._nextId(sheet);
-    const ev = { id, conditions: [], actions: [], children: [], disabled: false };
+    const h = this.history;
+    const apply = () => {
+      const sheet = this._getSheet();
+      const id = this._nextId(sheet);
+      const ev = { id, conditions: [], actions: [], children: [], disabled: false };
 
-    if (parentId === null) sheet.events.push(ev);
-    else {
-      const parent = this._findEvent(parentId);
-      if (!parent) return;
-      parent.children = parent.children || [];
-      parent.children.push(ev);
-    }
+      if (parentId === null) sheet.events.push(ev);
+      else {
+        const parent = this._findEvent(parentId);
+        if (!parent) return;
+        parent.children = parent.children || [];
+        parent.children.push(ev);
+      }
+    };
+    if (h) h.run('Add event', apply); else apply();
+
     this._recompile();
     this.refresh();
     this.onChange();
   }
 
   _duplicateEvent(eventId) {
-    const sheet = this._getSheet();
-    const original = this._findEvent(eventId);
-    if (!original) return;
+    const h = this.history;
+    const apply = () => {
+      const sheet = this._getSheet();
+      const original = this._findEvent(eventId);
+      if (!original) return;
 
-    const clone = JSON.parse(JSON.stringify(original));
-    // Переназначаем id событий; uid условий/действий очищаем —
-    // _ensureUids выдаст им новые при следующем рендере.
-    this._reassignEventIds(clone, { next: this._nextId(sheet) });
-    this._clearUids(clone);
+      const clone = JSON.parse(JSON.stringify(original));
+      this._reassignEventIds(clone, { next: this._nextId(sheet) });
+      this._clearUids(clone);
 
-    const insertion = this._findParentArray(sheet, eventId);
-    if (!insertion) return;
-    insertion.arr.splice(insertion.idx + 1, 0, clone);
+      const insertion = this._findParentArray(sheet, eventId);
+      if (!insertion) return;
+      insertion.arr.splice(insertion.idx + 1, 0, clone);
+    };
+    if (h) h.run('Duplicate event', apply); else apply();
 
     this._recompile();
     this.refresh();
@@ -577,23 +604,33 @@ export class EventSheetPanel {
   }
 
   _deleteEvent(eventId) {
-    const sheet = this._getSheet();
-    const insertion = this._findParentArray(sheet, eventId);
-    if (!insertion) return;
-    insertion.arr.splice(insertion.idx, 1);
+    const h = this.history;
+    const apply = () => {
+      const sheet = this._getSheet();
+      const insertion = this._findParentArray(sheet, eventId);
+      if (!insertion) return;
+      insertion.arr.splice(insertion.idx, 1);
+    };
+    if (h) h.run('Delete event', apply); else apply();
+
     this._recompile();
     this.refresh();
     this.onChange();
   }
 
   _deleteRow(eventId, kind, uid) {
-    const event = this._findEvent(eventId);
-    if (!event) return;
-    if (kind === 'cond') {
-      event.conditions = event.conditions.filter((c) => c.uid !== uid);
-    } else {
-      event.actions = event.actions.filter((a) => a.uid !== uid);
-    }
+    const h = this.history;
+    const apply = () => {
+      const event = this._findEvent(eventId);
+      if (!event) return;
+      if (kind === 'cond') {
+        event.conditions = event.conditions.filter((c) => c.uid !== uid);
+      } else {
+        event.actions = event.actions.filter((a) => a.uid !== uid);
+      }
+    };
+    if (h) h.run('Delete row', apply); else apply();
+
     this._recompile();
     this.refresh();
     this.onChange();
