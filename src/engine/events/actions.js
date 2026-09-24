@@ -1,5 +1,5 @@
 import { registry } from './registry.js';
-import { bodyMatchesTarget, findSceneObjectByName } from './helpers.js';
+import { bodyMatchesTarget, findSceneObjectByName, forEachMatchingObject } from './helpers.js';
 
 export function registerActions() {
   // ---------- PHYSICS ----------
@@ -118,6 +118,56 @@ export function registerActions() {
     ],
     compile: ({ name, value }) => (ctx) => {
       ctx.vars[name] = value;
+    },
+  });
+
+  // ---------- INSTANCE VARIABLES ----------
+
+  registry.actions.register('SetInstanceVar', {
+    label: 'Set instance variable',
+    category: 'Instance',
+    params: [
+      { id: 'target', type: 'target',  label: 'Target',   default: '*' },
+      { id: 'var',    type: 'instvar', label: 'Variable', default: 'hp' },
+      { id: 'value',  type: 'number',  label: 'Value',    default: 0 },
+    ],
+    compile: ({ target, var: name, value }) => (ctx) => {
+      forEachMatchingObject(ctx, target, (obj) => {
+        obj.properties = obj.properties || {};
+        obj.properties[name] = value;
+      });
+    },
+  });
+
+  registry.actions.register('AddInstanceVar', {
+    label: 'Add to instance variable',
+    category: 'Instance',
+    params: [
+      { id: 'target', type: 'target',  label: 'Target',   default: '*' },
+      { id: 'var',    type: 'instvar', label: 'Variable', default: 'hp' },
+      { id: 'value',  type: 'number',  label: 'Value',    default: 1 },
+    ],
+    compile: ({ target, var: name, value }) => (ctx) => {
+      forEachMatchingObject(ctx, target, (obj) => {
+        obj.properties = obj.properties || {};
+        obj.properties[name] = (obj.properties[name] ?? 0) + value;
+      });
+    },
+  });
+
+  registry.actions.register('SubtractInstanceVar', {
+    label: 'Subtract from instance variable',
+    category: 'Instance',
+    params: [
+      { id: 'target', type: 'target',  label: 'Target',   default: '*' },
+      { id: 'var',    type: 'instvar', label: 'Variable', default: 'hp' },
+      { id: 'value',  type: 'number',  label: 'Value',    default: 1 },
+    ],
+    compile: ({ target, var: name, value }) => (ctx) => {
+      forEachMatchingObject(ctx, target, (obj) => {
+        obj.properties = obj.properties || {};
+        obj.properties[name] = (obj.properties[name] ?? 0) - value;
+      });
     },
   });
 }

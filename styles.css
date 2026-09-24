@@ -669,3 +669,58 @@ aside h3 {
   border-radius: 4px;
   margin-top: 4px;
 }
+
+/* ============================================================
+   INSPECTOR — instance variables
+   ============================================================ */
+.inspector-instvars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.inspector-instvar-row {
+  display: grid;
+  grid-template-columns: 1fr 78px 22px;
+  gap: 4px;
+  align-items: center;
+}
+.inspector-instvar-row input {
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  color: #ddd;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font: 11px ui-monospace, monospace;
+  width: 100%;
+  min-width: 0;
+}
+.inspector-instvar-row input:focus {
+  outline: none;
+  border-color: #4a7ea8;
+}
+.inspector-instvar-row .instvar-del {
+  background: transparent;
+  border: none;
+  color: #555;
+  font: 14px/1 system-ui;
+  cursor: pointer;
+  padding: 0;
+}
+.inspector-instvar-row .instvar-del:hover { color: #e66; }
+
+.inspector-instvars-empty {
+  color: #555;
+  font-style: italic;
+  font-size: 11px;
+  padding: 4px 0;
+}
+.inspector-instvar-add {
+  width: 100%;
+  margin-top: 2px;
+}
+.inspector-instvar-row input.instvar-name-invalid {
+  border-color: #e66;
+  background: #2a1a1a;
+  color: #fbb;
+}

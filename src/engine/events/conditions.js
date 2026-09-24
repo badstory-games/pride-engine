@@ -1,5 +1,5 @@
 import { registry } from './registry.js';
-import { bodyMatchesAny } from './helpers.js';
+import { bodyMatchesAny, anyMatchingObject } from './helpers.js';
 
 export function registerConditions() {
   registry.conditions.register('EveryTick', {
@@ -64,8 +64,6 @@ export function registerConditions() {
   /**
    * Срабатывает ОДИН РАЗ при появлении новой пары контактов.
    * Пока тела касаются — повторно не сработает.
-   * Разошлись и снова коснулись → сработает снова.
-   * Порядок (A,B) не важен.
    */
   registry.conditions.register('OnCollision', {
     label: 'On collision',
@@ -82,6 +80,39 @@ export function registerConditions() {
         if (bodyMatchesAny(ctx, m.b, a) && bodyMatchesAny(ctx, m.a, b)) return true;
       }
       return false;
+    },
+  });
+
+  // ---------- INSTANCE VARIABLES ----------
+
+  /**
+   * Сравнивает instance-переменную с числом.
+   * Семантика: «истина, если ХОТЯ БЫ ОДИН объект под target удовлетворяет».
+   */
+  registry.conditions.register('CompareInstanceVar', {
+    label: 'Compare instance variable',
+    category: 'Instance',
+    params: [
+      { id: 'target', type: 'target',  label: 'Target',   default: '*' },
+      { id: 'var',    type: 'instvar', label: 'Variable', default: 'hp' },
+      { id: 'op',     type: 'select',  label: 'Op',       default: '==',
+        options: ['==', '!=', '<', '<=', '>', '>='] },
+      { id: 'value',  type: 'number',  label: 'Value',    default: 0 },
+    ],
+    compile: ({ target, var: name, op, value }) => (ctx) => {
+      return anyMatchingObject(ctx, target, (obj) => {
+        const props = obj.properties || {};
+        const v = props[name] ?? 0;
+        switch (op) {
+          case '==': return v === value;
+          case '!=': return v !== value;
+          case '<':  return v <  value;
+          case '<=': return v <= value;
+          case '>':  return v >  value;
+          case '>=': return v >= value;
+        }
+        return false;
+      });
     },
   });
 }

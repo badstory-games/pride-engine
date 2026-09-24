@@ -22,7 +22,6 @@ export class Scene {
     return this.layers.find((l) => l.id === id) || null;
   }
 
-  /** Индекс слоя в массиве = порядок отрисовки (0 — самый нижний). */
   layerIndex(id) {
     const i = this.layers.findIndex((l) => l.id === id);
     return i < 0 ? 0 : i;
@@ -69,6 +68,7 @@ export class Scene {
       physics: defaultPhysics(),
       ...partial,
     };
+    if (!obj.properties || typeof obj.properties !== 'object') obj.properties = {};
     this.objects.push(obj);
     return obj;
   }
@@ -130,6 +130,7 @@ export class Scene {
       if (o.rotation === undefined) o.rotation = 0;
       if (!o.name) o.name = 'Object';
       if (!o.physics) o.physics = defaultPhysics();
+      if (!o.properties || typeof o.properties !== 'object') o.properties = {};
     }
   }
 }

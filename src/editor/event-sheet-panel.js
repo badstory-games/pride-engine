@@ -175,7 +175,9 @@ export class EventSheetPanel {
     row.draggable = true;
 
     const paramsHtml = def
-      ? def.params.map((p) => this._renderParam(kind, item.uid, item.type, p, item.params?.[p.id])).join('')
+      ? def.params.map((p) =>
+          this._renderParam(kind, item.uid, item.type, p, item.params?.[p.id], item.params)
+        ).join('')
       : `<span class="es-param-error">unknown type: ${item.type}</span>`;
 
     row.innerHTML = `
@@ -187,7 +189,7 @@ export class EventSheetPanel {
     return row;
   }
 
-  _renderParam(kind, uid, ownerType, def, value) {
+  _renderParam(kind, uid, ownerType, def, value, allParams) {
     const val = value !== undefined ? value : def.default;
     const key = `${kind}:${uid}:${def.id}`;
 
@@ -234,6 +236,33 @@ export class EventSheetPanel {
       return `<label class="es-param"><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
+
+    // ---- instvar: список instance-переменных объектов под target ----
+    if (def.type === 'instvar') {
+      const target = (allParams && allParams.target) || '*';
+      const names = new Set();
+      for (const o of this.scene.objects) {
+        if (target === '*' || o.name === target) {
+          for (const n of Object.keys(o.properties || {})) names.add(n);
+        }
+      }
+      const list = [...names].sort();
+
+      if (list.length === 0) {
+        // Нет известных переменных — fallback на текст.
+        return `<label class="es-param"><span>${def.label}</span>
+          <input type="text" data-param="${key}" value="${val}"></label>`;
+      }
+
+      const inList = list.includes(val);
+      const opts = list.map((n) =>
+        `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
+      const extra = inList ? '' :
+        `<option value="${val}" selected>${val} (нет)</option>`;
+      return `<label class="es-param"><span>${def.label}</span>
+        <select data-param="${key}">${extra}${opts}</select></label>`;
+    }
+
     return `<span class="es-param-unknown">?</span>`;
   }
 
