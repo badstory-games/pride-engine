@@ -9,6 +9,7 @@ import {
   walkEvents, nextId,
   findElement, findParentArray,
 } from '../engine/events/sheet-utils.js';
+import { computeDefaultParams } from './param-defaults.js';
 
 const KEY_OPTIONS = [
   'Space', 'Enter', 'Escape', 'Tab',
@@ -456,10 +457,17 @@ export class EventSheetPanel {
     }
     if (def.type === 'varname') {
       const names = Object.keys(this.project.vars || {});
-      const inList = names.includes(val);
+      const has = names.includes(val);
       const opts = names.map((n) =>
         `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
-      const extra = inList ? '' :
+
+      if (!val) {
+        const placeholder = `<option value="" selected>Выберите переменную</option>`;
+        return `<label class="${cls}"${attr}><span>${def.label}</span>
+          <select data-param="${key}">${placeholder}${opts}</select></label>`;
+      }
+
+      const extra = has ? '' :
         `<option value="${val}" selected>${val} (нет)</option>`;
       return `<label class="${cls}"${attr}><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
@@ -488,9 +496,16 @@ export class EventSheetPanel {
       }
       const list = [...names].sort();
 
-      if (list.length === 0) {
+      const placeholderText = list.length === 0
+        ? 'Нет переменных'
+        : 'Выберите переменную';
+
+      if (!val) {
+        const placeholder = `<option value="" selected>${placeholderText}</option>`;
+        const opts = list.map((n) =>
+          `<option value="${n}">${n}</option>`).join('');
         return `<label class="${cls}"${attr}><span>${def.label}</span>
-          <input type="text" data-param="${key}" value="${val}"></label>`;
+          <select data-param="${key}">${placeholder}${opts}</select></label>`;
       }
 
       const inList = list.includes(val);
@@ -715,8 +730,10 @@ export class EventSheetPanel {
       const def = isCond ? registry.conditions.get(type) : registry.actions.get(type);
       if (!def) return;
 
-      const params = {};
-      for (const p of (def.params || [])) params[p.id] = p.default;
+      const params = computeDefaultParams(def, {
+        scene: this.scene,
+        vars:  this.project.vars || {},
+      });
 
       const sheet = this._getSheet();
       const uid = this._nextUid(sheet);
@@ -896,8 +913,10 @@ export class EventSheetPanel {
         const event = this._findEvent(eventId);
         if (!event) return;
 
-        const params = {};
-        for (const p of (def.params || [])) params[p.id] = p.default;
+        const params = computeDefaultParams(def, {
+          scene: this.scene,
+          vars:  this.project.vars || {},
+        });
 
         const sheet = this._getSheet();
         const uid = this._nextUid(sheet);

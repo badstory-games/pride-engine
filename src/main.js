@@ -42,6 +42,11 @@ import { Modal } from './editor/modal.js';
 import { initIcons } from './editor/icons.js';
 import { initTheme, getTheme, toggleTheme } from './editor/theme.js';
 import { Tooltip } from './editor/tooltip.js';
+import { computeDefaultParams } from './editor/param-defaults.js';
+import { SnapshotsModal } from './editor/snapshots-modal.js';
+import {
+  saveSnapshot, loadSnapshotData, applySnapshotToProject,
+} from './project/snapshots.js';
 
 async function main() {
   initIcons();
@@ -106,6 +111,7 @@ async function main() {
   });
   const clipboard = new Clipboard();
   const templateModal = new TemplateModal();
+  const snapshotsModal = new SnapshotsModal();
 
   const perfOverlay = new PerfOverlay(document.getElementById('canvas-wrap'));
 
@@ -337,8 +343,10 @@ async function main() {
 
       const h = editor.history;
       const apply = () => {
-        const params = {};
-        for (const p of (def.params || [])) params[p.id] = p.default;
+        const params = computeDefaultParams(def, {
+          scene,
+          vars: project.vars || {},
+        });
         if (kind === 'conditions') {
           first.conditions = first.conditions || [];
           first.conditions.push({ type, params });
@@ -360,7 +368,14 @@ async function main() {
     document.getElementById('vars-panel'),
     project
   );
-  varsPanel.onChange = () => scheduleSave();
+  varsPanel.onChange = () => {
+    // Переменные используются в параметрах событий (varname).
+    // После добавления/переименования/удаления нужно перерисовать
+    // лист, иначе селекты покажут устаревший список.
+    eventSheetPanel.refresh();
+    inspector.refresh();
+    scheduleSave();
+  };
   varsPanel.refresh();
 
   // ============================================================
@@ -459,47 +474,60 @@ async function main() {
   });
 
   // --- Topbar: Save / Load / New ---
-  document.getElementById('btn-save').addEventListener('click', () => {
-    if (saveProject(project)) {
-      setIndicator('saved', '✓ saved ' + new Date().toLocaleTimeString());
-    } else {
-      setIndicator('error', '✕ save error');
+  document.getElementById('btn-save').addEventListener('click', async () => {
+    const defaultName = 'Снимок ' + new Date().toLocaleString();
+    const name = await snapshotsModal.promptSave(defaultName);
+    if (name === null) return;   // отмена
+
+    const finalName = String(name).trim() || defaultName;
+    try {
+      saveSnapshot(project, finalName);
+      setIndicator('saved', '✓ snapshot saved');
+    } catch (e) {
+      console.error('[snapshot] save failed:', e);
+      setIndicator('error', '✕ snapshot save error');
     }
   });
 
   document.getElementById('btn-load').addEventListener('click', async () => {
-    if (!hasProject()) {
+    const result = await snapshotsModal.pick();
+    if (!result || result.action !== 'restore') return;
+
+    const snapshot = loadSnapshotData(result.id);
+    if (!snapshot) {
       await Modal.alert({
-        title: 'Нет сохранённого проекта',
-        message: 'В этом браузере ещё не сохранялся проект. Нажмите «Сохранить», чтобы создать точку сохранения.',
-        okText: 'Понятно',
+        title: 'Снимок недоступен',
+        message: 'Не удалось прочитать снимок. Возможно, он повреждён или удалён.',
+        okText: 'Закрыть',
       });
       return;
     }
-    if (loadProject(project)) {
-      editor.clearSelection();
-      if (!project.sheet) project.sheet = defaultEventSheet();
 
-      if (!project.assetsScope) project.assetsScope = makeScopeId();
-      await assets.useScope(project.assetsScope);
-
-      eventRuntime.setSheet(project.sheet);
-      eventSheetPanel.refresh();
-      varsPanel.refresh();
-      assetsPanel.refresh();
-
-      applyCanvasSize(project.canvasWidth, project.canvasHeight);
-      applyBgColor(project.bgColor);
-      applyGravity(project.gravityX, project.gravityY);
-      document.title = `Pride Engine — ${project.name}`;
-      projectSettings.refresh();
-
-      setIndicator('saved', '✓ loaded');
-      editor.onChange();
-      history.init();
-    } else {
-      setIndicator('error', '✕ load error');
+    if (!applySnapshotToProject(snapshot, project)) {
+      setIndicator('error', '✕ snapshot corrupted');
+      return;
     }
+
+    editor.clearSelection();
+    if (!project.sheet) project.sheet = defaultEventSheet();
+    if (!project.assetsScope) project.assetsScope = makeScopeId();
+
+    await assets.useScope(project.assetsScope);
+
+    eventRuntime.setSheet(project.sheet);
+    eventSheetPanel.refresh();
+    varsPanel.refresh();
+    assetsPanel.refresh();
+    projectSettings.refresh();
+
+    applyCanvasSize(project.canvasWidth, project.canvasHeight);
+    applyBgColor(project.bgColor);
+    applyGravity(project.gravityX, project.gravityY);
+    document.title = `Pride Engine — ${project.name}`;
+
+    setIndicator('saved', '✓ snapshot restored');
+    editor.onChange();
+    history.init();
   });
 
   document.getElementById('btn-new').addEventListener('click', async () => {

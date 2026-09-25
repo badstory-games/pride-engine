@@ -2073,3 +2073,92 @@ aside h3 {
   user-select: none;
 }
 .es-tooltip[hidden] { display: none; }
+
+/* ============================================================
+   SNAPSHOTS MODAL
+   ============================================================ */
+.snapshot-modal {
+  width: min(640px, 92vw);
+}
+.snapshot-modal .modal-box-header h3 {
+  margin: 0 0 4px;
+}
+.snapshot-hint {
+  margin: 0;
+  font: 12px/1.5 system-ui;
+  color: var(--fg-5);
+}
+
+.snapshot-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 4px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.snapshot-empty {
+  padding: 24px 12px;
+  color: var(--fg-8);
+  font-style: italic;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.snapshot-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  transition: border-color 80ms, background 80ms;
+}
+.snapshot-card:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-card-hover);
+}
+
+.snapshot-info { min-width: 0; }
+.snapshot-name {
+  font: 600 13px system-ui;
+  color: var(--fg-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+}
+.snapshot-meta {
+  font: 11px ui-monospace, monospace;
+  color: var(--fg-5);
+}
+
+.snapshot-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.snapshot-del {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-8);
+  cursor: pointer;
+  padding: 5px 7px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background 80ms, color 80ms, border-color 80ms;
+}
+.snapshot-del:hover {
+  color: var(--danger);
+  background: var(--bg-danger-hl);
+  border-color: var(--danger);
+}
+.snapshot-del > .icon { font-size: 14px; }
