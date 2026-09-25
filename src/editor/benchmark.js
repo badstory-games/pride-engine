@@ -10,9 +10,6 @@
  * @param {PhysicsBridge} opts.bridge
  * @param {PerfOverlay}   opts.perfOverlay
  * @param {(v: boolean|null) => any} [opts.setDebugDraw]
- *        Колбэк, который временно выключает debug draw и возвращает
- *        предыдущее значение. Получает `false` перед прогоном и `prev`
- *        после. Если null — не трогает состояние.
  * @param {number[]} [opts.counts]
  * @param {number}   [opts.framesPerTest]
  * @returns {Promise<Array>}
@@ -81,7 +78,7 @@ export async function runBenchmark({
       // ---------- cleanup ----------
       scene.objects.length = startIdx;
       scene.nextId = startId;
-      scene._layerIdxDirty = true;
+      scene.markLayersDirty();
 
       // ---------- stats ----------
       const warm = 20;

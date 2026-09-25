@@ -49,11 +49,14 @@ import {
 } from './project/snapshots.js';
 import { logger } from './editor/logger.js';
 import { LogPanel } from './editor/log-panel.js';
+import { setHintsSaveCallback } from './editor/hints.js';
 
 async function main() {
   initIcons();
   initTheme();
-  new Tooltip();   // ← глобальный тултип, один экземпляр на весь UI
+  // Глобальный тултип. Держим ссылку — так экземпляр не выглядит мусором
+  // при чтении кода (сборщик его и так не соберёт из-за слушателей).
+  const _tooltip = new Tooltip();
 
   // Перехватываем console до всего остального — ранние логи тоже попадут.
   logger.install();
@@ -73,7 +76,12 @@ async function main() {
   camera.y = canvas.height / 2;
   camera.zoom = 1;
 
-  const assets = new AssetManager(renderer.device);
+  // Renderer реагирует на освобождение GPU-текстур из AssetManager:
+  // удаляет bind-group из внутреннего кэша. Без этого при частой
+  // смене/переименовании ассетов копились бы мёртвые bind groups.
+  const assets = new AssetManager(renderer.device, {
+    onTextureDisposed: (texture) => renderer.releaseTexture(texture),
+  });
 
   // ---- __white: 1×1 белая текстура. Системная: без blob, не выгружается ----
   {
@@ -82,7 +90,6 @@ async function main() {
     const bmp = await createImageBitmap(img);
     assets.loadFromBitmap('__white', bmp);
 
-    // Превью для панели «Ресурсы» — маленький белый квадрат.
     const c = document.createElement('canvas');
     c.width = 8; c.height = 8;
     const ctx = c.getContext('2d');
@@ -90,9 +97,6 @@ async function main() {
     ctx.fillRect(0, 0, 8, 8);
     assets.setPreviewUrl('__white', c.toDataURL('image/png'));
   }
-
-  // Никаких других предзагруженных текстур: пользователь загружает
-  // свои через панель «Ресурсы».
 
   // --- Сцена / проект / редактор ---
   const scene   = new Scene();
@@ -155,19 +159,6 @@ async function main() {
 
   function applyGravity(gx, gy) {
     bridge.setGravity(gx, gy);
-  }
-
-  // ---- Определяем assetsScope текущего проекта и восстанавливаем ресурсы ----
-  // Если в localStorage уже есть проект — берём его scope. Иначе генерим новый.
-  {
-    const raw = localStorage.getItem('pride.project.v1');
-    let scope = null;
-    if (raw) {
-      try { scope = JSON.parse(raw).assetsScope || null; } catch { /* ignore */ }
-    }
-    if (!scope) scope = makeScopeId();
-    project.assetsScope = scope;
-    await assets.useScope(scope);
   }
 
   // --- Input ---
@@ -287,6 +278,10 @@ async function main() {
     }, 500);
   }
 
+  // hints.js не знает про storage; после показа новой подсказки
+  // она дергает этот колбэк, чтобы hintsShown попал в autosave.
+  setHintsSaveCallback(scheduleSave);
+
   // --- Первая загрузка ---
   if (hasProject()) {
     if (loadProject(project)) {
@@ -313,6 +308,13 @@ async function main() {
     scene.moveLayer(scene.layers[scene.layers.length - 1].id, -1);
     setIndicator('saved', '✓ ready');
   }
+
+  // ---- Bootstrap assetsScope и восстанавливаем ресурсы ИЗ УЖЕ ЗАГРУЖЕННОГО
+  //      проекта. Раньше scope читался из localStorage до loadProject(),
+  //      из-за чего при отсутствии assetsScope в старом проекте возникал
+  //      рассинхрон со сгенерированным id. Теперь — единый источник истины.
+  if (!project.assetsScope) project.assetsScope = makeScopeId();
+  await assets.useScope(project.assetsScope);
 
   applyCanvasSize(project.canvasWidth, project.canvasHeight);
   applyBgColor(project.bgColor);
@@ -379,7 +381,7 @@ async function main() {
     project
   );
 
-    // --- Автообновление ссылок при переименованиях ---
+  // --- Автообновление ссылок при переименованиях ---
   inspector.onObjectRenamed = (oldName, newName) => {
     eventSheetPanel.renameObjectRefs(oldName, newName);
   };
@@ -391,9 +393,6 @@ async function main() {
   };
 
   varsPanel.onChange = () => {
-    // Переменные используются в параметрах событий (varname).
-    // После добавления/переименования/удаления нужно перерисовать
-    // лист, иначе селекты покажут устаревший список.
     eventSheetPanel.refresh();
     inspector.refresh();
     scheduleSave();
@@ -499,7 +498,7 @@ async function main() {
   document.getElementById('btn-save').addEventListener('click', async () => {
     const defaultName = 'Снимок ' + new Date().toLocaleString();
     const name = await snapshotsModal.promptSave(defaultName);
-    if (name === null) return;   // отмена
+    if (name === null) return;
 
     const finalName = String(name).trim() || defaultName;
     try {
@@ -745,7 +744,8 @@ async function main() {
   function refreshPlayButtons() {
     btnPlay.classList.toggle('active', bridge.running && !bridge.paused);
     btnPause.classList.toggle('active', bridge.running && bridge.paused);
-    btnStop.classList.toggle('danger', !bridge.running);
+    // Danger-акцент имеет смысл, только когда есть что останавливать.
+    btnStop.classList.toggle('danger', bridge.running);
     btnStop.disabled  = !bridge.running;
     btnPause.disabled = !bridge.running;
     btnDebug.classList.toggle('toggled', debugDraw);
@@ -847,7 +847,9 @@ async function main() {
     layersPanel.refresh();
     varsPanel.refresh();
     assetsPanel.refresh();
-    eventSheetPanel.refresh();   // ← пересчёт предупреждений валидации
+    // refresh() у EventSheetPanel — rAF-дебаунс; при drag editor.onChange
+    // дёргается на каждый mousemove, но DOM пересобирается один раз за кадр.
+    eventSheetPanel.refresh();
     scheduleSave();
   };
 

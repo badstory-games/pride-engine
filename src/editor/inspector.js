@@ -450,13 +450,13 @@ export class Inspector {
     if (!prop || input.readOnly || input.type === 'checkbox') return;
     if (this.editor.selection.size === 0) return;
 
+    // Запоминаем исходное имя — пригодится при blur, если пользователь
+    // переименовал объект. Транзакция истории НЕ открывается здесь —
+    // это сделает _onFieldChange при первом input.
     if (prop === 'name') {
       const first = this.scene.get([...this.editor.selection][0]);
       this._nameOriginal = first ? (first.name || 'Object') : null;
     }
-
-    const h = this.editor.history;
-    if (h) h.begin('Inspector: ' + prop);
   }
 
   _onFormKeydown(e) {
@@ -464,7 +464,6 @@ export class Inspector {
     const input = e.target;
     if (!input || !input.classList) return;
 
-    // instvar: name / value
     if (input.classList.contains('instvar-name') ||
         input.classList.contains('instvar-value')) {
       e.preventDefault();
@@ -472,7 +471,6 @@ export class Inspector {
       return;
     }
 
-    // Обычные поля инспектора с data-prop: текст, number, select.
     const prop = input.dataset && input.dataset.prop;
     if (prop && !input.readOnly && input.type !== 'checkbox') {
       e.preventDefault();
@@ -505,6 +503,9 @@ export class Inspector {
 
     const prop = input.dataset && input.dataset.prop;
     if (!prop) return;
+
+    // Закрываем отложенную транзакцию. Если input не менялся —
+    // h.pending === false и commit() — no-op.
     const h = this.editor.history;
     if (h) h.commit();
 
@@ -578,6 +579,13 @@ export class Inspector {
 
     const isCheckbox = e.target.type === 'checkbox';
     const value = isCheckbox ? e.target.checked : e.target.value;
+
+    // Для текстовых/number полей открываем транзакцию здесь —
+    // при первом редактировании. Focus без правок snapshot не делает.
+    if (!isCheckbox) {
+      const h = this.editor.history;
+      if (h) h.begin('Inspector: ' + prop);
+    }
 
     const apply = () => {
       for (const id of this.editor.selection) {

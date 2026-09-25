@@ -15,6 +15,11 @@ export class Scene {
     this._layerIdxDirty = true;
   }
 
+  /** Публичный API: пометить кэш индексов слоёв устаревшим. */
+  markLayersDirty() {
+    this._layerIdxDirty = true;
+  }
+
   // ---------- Layers ----------
   addLayer(name) {
     const id = 'layer_' + (this.nextLayerId++);
@@ -83,13 +88,6 @@ export class Scene {
     return obj;
   }
 
-  /**
-   * Создаёт копию объекта-шаблона в точке (x, y) — координаты это
-   * ЦЕНТР нового объекта. Возвращает новый объект или null.
-   *
-   * Клон наследует все свойства шаблона (текстуру, физику, variables),
-   * но помечается template: false.
-   */
   spawnFromTemplate(template, x, y) {
     if (!template) return null;
     const clone = structuredClone(template);

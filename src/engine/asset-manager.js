@@ -11,10 +11,14 @@
  * Ассеты, у которых нет исходного blob (например __white), считаются
  * «системными»: они не выгружаются при смене scope и не пишутся в IDB.
  * Всё остальное — пользовательские, их можно удалять и переименовывать.
+ *
+ * onTextureDisposed — необязательный колбэк, вызываемый ПЕРЕД destroy()
+ * каждой GPU-текстуры. Renderer подписывается, чтобы почистить bind-group
+ * cache. Если не задан — destroy() всё равно выполняется.
  */
 
 export class AssetManager {
-  constructor(device) {
+  constructor(device, opts = {}) {
     this.device = device;
 
     this.assets   = new Map();
@@ -23,7 +27,12 @@ export class AssetManager {
     this.version  = 0;
 
     this._scope = null;
+    this._scopeToken = null;
     this._listeners = new Set();
+
+    this.onTextureDisposed = typeof opts.onTextureDisposed === 'function'
+      ? opts.onTextureDisposed
+      : null;
 
     this._db = null;
     this._dbReady = this._openDb();
@@ -39,22 +48,28 @@ export class AssetManager {
    * Переключает проектную область. Пользовательские ассеты (у которых
    * есть blob) выгружаются из памяти и заменяются теми, что сохранены
    * для нового scope в IndexedDB. Системные (без blob) остаются.
+   *
+   * Если во время асинхронной загрузки вызвали useScope() ещё раз —
+   * предыдущая загрузка молча прерывается по токену.
    */
   async useScope(scope) {
     if (this._scope === scope) return;
     this._scope = scope;
 
+    const token = {};
+    this._scopeToken = token;
+
     for (const id of [...this.assets.keys()]) {
       if (!this.blobs.has(id)) continue;   // системный — оставляем
       const a = this.assets.get(id);
-      if (a && a.texture) a.texture.destroy();
+      if (a && a.texture) this._disposeTexture(a.texture);
       this.assets.delete(id);
       this.blobs.delete(id);
       this.previews.delete(id);
     }
 
     this._bump();
-    await this.restoreFromDb();
+    await this.restoreFromDb(token);
   }
 
   // ============================================================
@@ -71,6 +86,15 @@ export class AssetManager {
     for (const fn of this._listeners) {
       try { fn(); } catch (e) { console.error('[assets] listener error:', e); }
     }
+  }
+
+  /** Освобождает GPU-текстуру: сначала сообщает внешнему коду, потом destroy. */
+  _disposeTexture(texture) {
+    if (!texture) return;
+    if (this.onTextureDisposed) {
+      try { this.onTextureDisposed(texture); } catch { /* swallow */ }
+    }
+    try { texture.destroy(); } catch { /* ignore */ }
   }
 
   // ============================================================
@@ -141,12 +165,23 @@ export class AssetManager {
     });
   }
 
-  async restoreFromDb() {
+  /**
+   * Восстанавливает ассеты текущего scope из IndexedDB.
+   * @param {object|null} token — если задан, сверяется с this._scopeToken
+   *        после каждого await, и при несовпадении загрузка прерывается.
+   */
+  async restoreFromDb(token = null) {
     const all = await this._idbAll();
+    if (token !== null && this._scopeToken !== token) return;
+
     for (const [id, blob] of Object.entries(all)) {
       if (this.assets.has(id)) continue;
       try {
         const bmp = await createImageBitmap(blob);
+        if (token !== null && this._scopeToken !== token) {
+          bmp.close();
+          return;
+        }
         this._upload(id, bmp, blob);
       } catch (e) {
         console.warn(`[assets] restore "${id}" failed:`, e);
@@ -176,7 +211,7 @@ export class AssetManager {
     const height = bitmap.height;
 
     const old = this.assets.get(id);
-    if (old && old.texture) old.texture.destroy();
+    if (old && old.texture) this._disposeTexture(old.texture);
 
     const texture = this.device.createTexture({
       size: [width, height],
@@ -243,7 +278,7 @@ export class AssetManager {
 
   remove(id) {
     const a = this.assets.get(id);
-    if (a && a.texture) a.texture.destroy();
+    if (a && a.texture) this._disposeTexture(a.texture);
     this.assets.delete(id);
     this.blobs.delete(id);
     this.previews.delete(id);

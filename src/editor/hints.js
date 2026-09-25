@@ -8,9 +8,24 @@
  *           в этом проекте. Сбрасываются при создании нового проекта,
  *           при открытии .pride, но сохраняются между сессиями.
  *           В историю undo/redo НЕ входят.
+ *
+ * Персистенция: модуль не знает про storage. Когда подсказка показана
+ * впервые, вызывается зарегистрированный saveCallback (обычно —
+ * scheduleSave из main.js), который отложенно сохранит проект.
  */
 
 const ENABLED_KEY = 'pride.hints.enabled.v1';
+
+let saveCallback = null;
+
+/**
+ * Регистрирует колбэк, вызываемый после того, как showHintOnce()
+ * пометил новую подсказку как показанную. Нужен, чтобы hintsShown
+ * попал в следующий autosave.
+ */
+export function setHintsSaveCallback(fn) {
+  saveCallback = typeof fn === 'function' ? fn : null;
+}
 
 export function hintsEnabled() {
   try {
@@ -42,5 +57,8 @@ export function showHintOnce(project, key, fn) {
   if (project.hintsShown[key]) return false;
   project.hintsShown[key] = true;
   fn();
+  if (saveCallback) {
+    try { saveCallback(); } catch { /* swallow */ }
+  }
   return true;
 }

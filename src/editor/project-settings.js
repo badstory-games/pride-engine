@@ -12,9 +12,11 @@ import { hintsEnabled, setHintsEnabled } from './hints.js';
  *     не часть проекта, хранится в localStorage.
  *
  * Все изменения проекта проходят через history:
- *   - текстовые/number — транзакция от focus до blur;
- *   - color — snapshot на change.
- * Чекбокс подсказок — отдельно, без history.
+ *   - текстовые/number — транзакция открывается на ПЕРВОМ input
+ *     и закрывается на blur (a не на focus/blur — чтобы простой клик
+ *     по полю не делал structuredClone сцены);
+ *   - color — snapshot на change (после того, как пользователь закрыл пикер);
+ *   - чекбокс подсказок — отдельно, без history.
  */
 export class ProjectSettings {
   constructor(container, project, opts = {}) {
@@ -58,7 +60,6 @@ export class ProjectSettings {
 
     this.container.addEventListener('input',   (e) => this._onInput(e));
     this.container.addEventListener('change',  (e) => this._onChange(e));
-    this.container.addEventListener('focusin', (e) => this._onFocusIn(e));
     this.container.addEventListener('blur',    (e) => this._onBlur(e), true);
 
     this.container.addEventListener('keydown', (e) => {
@@ -145,7 +146,6 @@ export class ProjectSettings {
     set('gravityX',     p.gravityX ?? 0);
     set('gravityY',     p.gravityY ?? 980);
 
-    // Подсказки — глобальная настройка, читается из localStorage.
     if (activeProp !== 'hintsEnabled') {
       this.fields.hintsEnabled.checked = hintsEnabled();
     }
@@ -154,15 +154,6 @@ export class ProjectSettings {
   // ============================================================
   // events
   // ============================================================
-
-  _onFocusIn(e) {
-    const prop = e.target.dataset && e.target.dataset.prop;
-    if (!prop) return;
-    if (e.target.type === 'color') return;
-    if (e.target.type === 'checkbox') return;   // глобальная настройка, без истории
-    const h = this.history;
-    if (h) h.begin('Project: ' + prop);
-  }
 
   _onBlur(e) {
     const prop = e.target.dataset && e.target.dataset.prop;
@@ -184,6 +175,17 @@ export class ProjectSettings {
       this.onHintsEnabledChange(enabled);
       return;
     }
+
+    // Color picker: применяем значение по input, но транзакцию
+    // открываем через snapshot() в _onChange — когда пикер закрылся.
+    if (e.target.type === 'color') {
+      this._apply(prop, e.target.value);
+      return;
+    }
+
+    // Текст/number: открываем транзакцию на первом изменении.
+    const h = this.history;
+    if (h) h.begin('Project: ' + prop);
 
     this._apply(prop, e.target.value);
   }

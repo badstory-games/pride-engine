@@ -83,17 +83,57 @@ async function collectModules(rootUrl) {
 }
 
 /**
- * Заменяет комментарии пробелами (сохраняя переводы строк),
- * чтобы регулярки для импортов не матчились в закомментированном коде.
- * Строковые литералы НЕ трогаем — они несут реальные пути.
+ * Заменяет комментарии пробелами, сохраняя переводы строк и не трогая
+ * содержимое строковых/шаблонных литералов. Конечный автомат —
+ * устойчив к `//` внутри строк и `'/*'` внутри кода.
+ *
+ * Ограничение: шаблонные литералы с `${...}`, внутри которых есть
+ * комментарии, обрабатываются поверхностно (весь literal — opaque).
+ * Для рантайма Pride Engine это допустимо.
  */
 function stripComments(src) {
-  // block comments
-  let out = src.replace(/\/\*[\s\S]*?\*\//g, (m) =>
-    m.replace(/[^\n]/g, ' ')
-  );
-  // line comments: // … до конца строки, но не часть URL вида https://
-  out = out.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/[^\n]/g, ' '));
+  const n = src.length;
+  let out = '';
+  let i = 0;
+  let state = 'code'; // 'code' | 'line' | 'block' | 'single' | 'double' | 'template'
+
+  while (i < n) {
+    const c  = src[i];
+    const c2 = i + 1 < n ? src[i + 1] : '';
+
+    if (state === 'code') {
+      if (c === '/' && c2 === '/') { state = 'line';   out += '  '; i += 2; continue; }
+      if (c === '/' && c2 === '*') { state = 'block';  out += '  '; i += 2; continue; }
+      if (c === "'") { state = 'single';   out += c; i++; continue; }
+      if (c === '"') { state = 'double';   out += c; i++; continue; }
+      if (c === '`') { state = 'template'; out += c; i++; continue; }
+      out += c; i++; continue;
+    }
+
+    if (state === 'line') {
+      if (c === '\n') { state = 'code'; out += c; i++; continue; }
+      out += ' '; i++; continue;
+    }
+
+    if (state === 'block') {
+      if (c === '*' && c2 === '/') { state = 'code'; out += '  '; i += 2; continue; }
+      out += (c === '\n') ? '\n' : ' ';
+      i++; continue;
+    }
+
+    if (state === 'single' || state === 'double' || state === 'template') {
+      const closing = state === 'single' ? "'" : state === 'double' ? '"' : '`';
+      if (c === '\\' && i + 1 < n) {
+        out += c + src[i + 1];
+        i += 2;
+        continue;
+      }
+      out += c;
+      if (c === closing) state = 'code';
+      i++; continue;
+    }
+  }
+
   return out;
 }
 
@@ -171,7 +211,6 @@ function buildHtml({ title, importMap, project, assets, debugDraw }) {
   const projJson   = safe(project);
   const assetsJson = safe(assets);
 
-  // Размер канваса и имя проекта берём из самого project.
   const canvasW = project.canvasWidth  ?? 1024;
   const canvasH = project.canvasHeight ?? 640;
   const pageTitle = project.name || title || 'Pride Game';

@@ -100,6 +100,23 @@ export class Renderer {
     this.clearColor.a = a;
   }
 
+  /**
+   * Освобождает bind-group, привязанный к текстуре. Вызывается извне
+   * (AssetManager → onTextureDisposed) в момент, когда текстура
+   * уже не используется и будет уничтожена.
+   *
+   * Если удаляемая текстура — текущая (this.texture), сбрасываем
+   * и указатель, чтобы следующий setTexture() пересоздал bindGroup.
+   */
+  releaseTexture(texture) {
+    if (!texture) return;
+    this._bindGroupCache.delete(texture);
+    if (this.texture === texture) {
+      this.texture = null;
+      this.bindGroup = null;
+    }
+  }
+
   // Матрица проекции пишется извне через camera.writeMatrix(m, W, H),
   // затем вызывающий код сам делает writeBuffer. Renderer её не трогает.
 

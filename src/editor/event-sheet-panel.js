@@ -32,6 +32,8 @@ export class EventSheetPanel {
     /** @type {import('./history.js').History|null} */
     this.history = null;
 
+    this._refreshRaf = null;
+
     container.innerHTML = `
       <div class="es-toolbar">
         <h3>Лист событий</h3>
@@ -60,12 +62,37 @@ export class EventSheetPanel {
     this._attachDnD();
   }
 
+  destroy() {
+    if (this._refreshRaf != null) {
+      cancelAnimationFrame(this._refreshRaf);
+      this._refreshRaf = null;
+    }
+  }
+
   setSheet(sheet) {
     this.project.sheet = sheet;
     this.refresh();
   }
 
+  /**
+   * Асинхронный (rAF) рендер. Множественные вызовы в одном кадре
+   * схлопываются в один _render() — критично, когда editor.onChange
+   * дёргается на каждый mousemove при drag.
+   */
   refresh() {
+    if (this._refreshRaf != null) return;
+    this._refreshRaf = requestAnimationFrame(() => {
+      this._refreshRaf = null;
+      this._render();
+    });
+  }
+
+  /** Синхронный рендер. Использовать, когда DOM нужен «прямо сейчас». */
+  refreshNow() {
+    if (this._refreshRaf != null) {
+      cancelAnimationFrame(this._refreshRaf);
+      this._refreshRaf = null;
+    }
     this._render();
   }
 
