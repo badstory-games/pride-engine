@@ -1,7 +1,6 @@
 import { icon } from './icons.js';
 import { optionLabel } from './options-i18n.js';
 
-/** Отображаемые имена для системных текстур. Внутри id не меняется. */
 const TEXTURE_LABELS = {
   '__white': 'По умолчанию',
 };
@@ -23,10 +22,9 @@ export class Inspector {
     this._instVarsSig = '';
 
     /** Колбэки, устанавливаемые извне (main.js). */
-    this.onObjectRenamed   = null;   // (oldName, newName) => void
-    this.onInstVarRenamed  = null;   // (objName, oldName, newName) => void
+    this.onObjectRenamed   = null;
+    this.onInstVarRenamed  = null;
 
-    // Запоминается в focusin для поля «Имя» — используется в blur.
     this._nameOriginal = null;
 
     this._build();
@@ -85,6 +83,12 @@ export class Inspector {
     form.appendChild(visRow);
     this.fields.visible = visRow.querySelector('input');
 
+    const tplRow = document.createElement('div');
+    tplRow.className = 'inspector-row inspector-row-check';
+    tplRow.innerHTML = `<label><input type="checkbox" data-prop="template"> Шаблон (не участвует в игре)</label>`;
+    form.appendChild(tplRow);
+    this.fields.template = tplRow.querySelector('input');
+
     // ---------- Физика ----------
     const physTitle = document.createElement('div');
     physTitle.className = 'inspector-section-title';
@@ -104,7 +108,6 @@ export class Inspector {
     this._numField   (form, 'physRestitution', 'Упругость',  { min: 0, max: 1, step: 0.05 });
     this._numField   (form, 'physRadius',      'Радиус',     { min: 1, step: 1 });
 
-    // Значения остаются английскими, метки берутся из OPTION_LABELS.
     const fillSelect = (sel, values) => {
       sel.innerHTML = '';
       for (const v of values) {
@@ -262,6 +265,7 @@ export class Inspector {
     setVal('layerId', first.layerId);
     setVal('textureId', first.textureId || '');
     this.fields.visible.checked = first.visible;
+    this.fields.template.checked = !!first.template;
 
     const ph = first.physics || {};
     const setVal2 = (prop, v) => {
@@ -290,7 +294,7 @@ export class Inspector {
   }
 
   // ============================================================
-  // Instance variables — рендеринг
+  // Instance variables
   // ============================================================
 
   _renderInstanceVars() {
@@ -430,8 +434,6 @@ export class Inspector {
     this.editor.onChange();
   }
 
-  // ---------- focus / blur / Enter ----------
-
   _onFormFocusIn(e) {
     const input = e.target;
     if (!input || !input.classList) return;
@@ -471,7 +473,6 @@ export class Inspector {
     }
 
     // Обычные поля инспектора с data-prop: текст, number, select.
-    // Enter → commit через blur. Checkbox и readonly не трогаем.
     const prop = input.dataset && input.dataset.prop;
     if (prop && !input.readOnly && input.type !== 'checkbox') {
       e.preventDefault();
@@ -556,8 +557,8 @@ export class Inspector {
     input.classList.remove('instvar-name-invalid');
 
     if (this.onInstVarRenamed) {
-      const first = this.scene.get([...this.editor.selection][0]);
-      const objName = first ? first.name : null;
+      const f = this.scene.get([...this.editor.selection][0]);
+      const objName = f ? f.name : null;
       if (objName) this.onInstVarRenamed(objName, originalName, newName);
     }
 
@@ -637,6 +638,9 @@ export class Inspector {
           }
           case 'visible':
             obj.visible = value;
+            break;
+          case 'template':
+            obj.template = value;
             break;
         }
       }

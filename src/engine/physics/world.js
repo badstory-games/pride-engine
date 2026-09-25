@@ -35,10 +35,6 @@ export class World {
     this._manifoldPool = [];
     this._manifoldCount = 0;
 
-    /**
-     * key пары → тик, когда её видели в последний раз.
-     * Позволяет не считать повторным контакт, если он мигнул на 1-2 тика.
-     */
     this._pairLastSeen = new Map();
     this._tickCounter  = 0;
   }
@@ -83,6 +79,7 @@ export class World {
     const damp = this.linearDamping;
 
     for (let i = 0; i < n; i++) {
+      if (store.flags[i] === 0) continue;          // мёртвое тело
       if (store.btype[i] !== BodyType.DYNAMIC) continue;
       store.vx[i] = (store.vx[i] + gx) * damp;
       store.vy[i] = (store.vy[i] + gy) * damp;
@@ -91,6 +88,7 @@ export class World {
     // --- 2) Broad phase ---
     this.broadphase.clear();
     for (let i = 0; i < n; i++) {
+      if (store.flags[i] === 0) continue;          // мёртвое тело
       const shape = store.shape[i];
       const hw = shape === ShapeType.CIRCLE ? store.radius[i] : store.halfW[i];
       const hh = shape === ShapeType.CIRCLE ? store.radius[i] : store.halfH[i];
@@ -134,14 +132,12 @@ export class World {
       const key = lo * 0x100000 + hi;
 
       const last = this._pairLastSeen.get(key);
-      // Новая пара — если её не видели последние `grace` тиков
       if (last === undefined || (tick - last) > grace) {
         this.newCollisions.push(m);
       }
       this._pairLastSeen.set(key, tick);
     }
 
-    // Периодическая чистка старых записей (не каждый тик)
     if ((tick & 63) === 0) {
       const cutoff = tick - grace * 4;
       for (const [k, t] of this._pairLastSeen) {
@@ -154,6 +150,7 @@ export class World {
 
     // --- 5) Integrate positions ---
     for (let i = 0; i < n; i++) {
+      if (store.flags[i] === 0) continue;          // мёртвое тело
       if (store.btype[i] !== BodyType.DYNAMIC) continue;
       store.x[i] += store.vx[i] * dt;
       store.y[i] += store.vy[i] * dt;

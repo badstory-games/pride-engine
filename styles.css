@@ -2325,3 +2325,12 @@ aside h3 {
   font: 12px system-ui;
   font-style: italic;
 }
+
+/* ============================================================
+   TEMPLATE BADGE (инспектор)
+   ============================================================ */
+
+/* Лёгкая подсветка поля имени, если объект — шаблон. */
+.inspector-form input[data-prop="name"].is-template {
+  color: var(--accent-head);
+}

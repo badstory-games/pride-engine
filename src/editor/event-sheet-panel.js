@@ -3,13 +3,13 @@ import { EventPopover } from './event-popover.js';
 import { Modal } from './modal.js';
 import { icon } from './icons.js';
 import { optionLabel } from './options-i18n.js';
+import { computeDefaultParams } from './param-defaults.js';
 import {
   EVENT, GROUP, COMMENT,
   kindOf,
   walkEvents, nextId,
   findElement, findParentArray,
 } from '../engine/events/sheet-utils.js';
-import { computeDefaultParams } from './param-defaults.js';
 
 const KEY_OPTIONS = [
   'Space', 'Enter', 'Escape', 'Tab',
@@ -98,12 +98,6 @@ export class EventSheetPanel {
   // VALIDATION
   // ============================================================
 
-  /**
-   * Проверяет параметры события.
-   * Возвращает { count, summary: string[], paramMap: Map<key, message> }.
-   *
-   * key = `${kind}:${uid}:${paramId}`, kind = 'cond' | 'action'.
-   */
   _validateEvent(event) {
     const paramMap = new Map();
     const summary = [];
@@ -137,8 +131,13 @@ export class EventSheetPanel {
   }
 
   _validateParam(def, val, allParams) {
-    // Пустое значение — валидатор молчит. Проблема «не задано» вне нашей зоны.
     if (val === undefined || val === null || val === '') return null;
+
+    if (def.type === 'prefab') {
+      if (!val) return null;
+      const exists = this.scene.objects.some((o) => o.name === val);
+      return exists ? null : `Шаблон «${val}» не найден`;
+    }
 
     if (def.type === 'target') {
       if (val === '*') return null;
@@ -198,8 +197,6 @@ export class EventSheetPanel {
     return this._renderEvent(el, depth);
   }
 
-  // ----- group -----
-
   _renderGroup(group, depth) {
     const wrap = document.createElement('div');
     wrap.className = 'es-group' +
@@ -258,8 +255,6 @@ export class EventSheetPanel {
     return wrap;
   }
 
-  // ----- comment -----
-
   _renderComment(comment, depth) {
     const wrap = document.createElement('div');
     wrap.className = 'es-comment';
@@ -298,8 +293,6 @@ export class EventSheetPanel {
 
     return wrap;
   }
-
-  // ----- event -----
 
   _renderEvent(event, depth) {
     const validation = this._validateEvent(event);
@@ -462,13 +455,37 @@ export class EventSheetPanel {
         `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
 
       if (!val) {
-        const placeholder = `<option value="" selected>Выберите переменную</option>`;
+        const placeholder = `<option value="" selected>— выберите переменную —</option>`;
         return `<label class="${cls}"${attr}><span>${def.label}</span>
           <select data-param="${key}">${placeholder}${opts}</select></label>`;
       }
 
       const extra = has ? '' :
         `<option value="${val}" selected>${val} (нет)</option>`;
+      return `<label class="${cls}"${attr}><span>${def.label}</span>
+        <select data-param="${key}">${extra}${opts}</select></label>`;
+    }
+    if (def.type === 'prefab') {
+      const names = new Set();
+      for (const o of this.scene.objects) if (o.name) names.add(o.name);
+      const list = [...names].sort();
+
+      const placeholderText = list.length === 0
+        ? '— нет объектов —'
+        : '— выберите шаблон —';
+
+      if (!val) {
+        const ph = `<option value="" selected>${placeholderText}</option>`;
+        const opts = list.map((n) => `<option value="${n}">${n}</option>`).join('');
+        return `<label class="${cls}"${attr}><span>${def.label}</span>
+          <select data-param="${key}">${ph}${opts}</select></label>`;
+      }
+
+      const has = list.includes(val);
+      const extra = has ? '' :
+        `<option value="${val}" selected>${val} (нет в сцене)</option>`;
+      const opts = list.map((n) =>
+        `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
       return `<label class="${cls}"${attr}><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
@@ -497,8 +514,8 @@ export class EventSheetPanel {
       const list = [...names].sort();
 
       const placeholderText = list.length === 0
-        ? 'Нет переменных'
-        : 'Выберите переменную';
+        ? '— нет переменных —'
+        : '— выберите переменную —';
 
       if (!val) {
         const placeholder = `<option value="" selected>${placeholderText}</option>`;
@@ -883,16 +900,12 @@ export class EventSheetPanel {
     const el = e.target;
     if (!el || !el.classList) return;
 
-    // Имя группы.
     if (el.classList.contains('es-group-name')) {
       e.preventDefault();
       el.blur();
       return;
     }
 
-    // Параметры условий/действий: input и select с data-param.
-    // Комментарии (contenteditable) НЕ трогаем — там Enter создаёт
-    // новую строку, что ожидаемо.
     if (el.matches && el.matches('input[data-param], select[data-param]')) {
       e.preventDefault();
       el.blur();
@@ -1019,17 +1032,13 @@ export class EventSheetPanel {
     this._recompile();
     this.onChange();
 
-    // Если параметр — target или instvar, зависимые параметры того же
-    // события могли стать валидными/невалидными. Пере-рендерим.
     if (paramId === 'target' || paramId === 'var' || paramId === 'name') {
       this.refresh();
     } else {
-      // Точечно обновляем предупреждения у события.
       this._refreshEventValidation(eventId);
     }
   }
 
-  /** Точечное обновление визуала предупреждений без полного ре-рендера. */
   _refreshEventValidation(eventId) {
     const el = this.container.querySelector(`.es-event[data-event-id="${eventId}"]`);
     if (!el) return;
@@ -1040,7 +1049,6 @@ export class EventSheetPanel {
 
     el.classList.toggle('has-warning', validation.count > 0);
 
-    // Иконка в шапке.
     const head = el.querySelector('.es-head');
     if (head) {
       let warn = head.querySelector('.es-warn');
@@ -1059,13 +1067,12 @@ export class EventSheetPanel {
       }
     }
 
-    // Параметры: обновляем класс/title.
     for (const label of el.querySelectorAll('.es-param')) {
       label.classList.remove('invalid');
       label.removeAttribute('data-tooltip');
     }
     for (const [key, msg] of validation.paramMap) {
-      const [kind, uidStr, paramId] = key.split(':');
+      const [kind, uidStr] = key.split(':');
       const row = el.querySelector(`.es-row[data-row-kind="${kind}"][data-row-uid="${uidStr}"]`);
       if (!row) continue;
       const label = [...row.querySelectorAll('.es-param')].find((l) => {
@@ -1340,6 +1347,57 @@ export class EventSheetPanel {
   }
 
   // ============================================================
+  // REFERENCE RENAMING
+  // ============================================================
+
+  _renameParamRefs(oldName, newName, paramType, restrict) {
+    const sheet = this._getSheet();
+    if (!sheet || !oldName || !newName || oldName === newName) return;
+
+    let touched = 0;
+
+    const visit = (items, defs) => {
+      for (const item of items || []) {
+        const def = defs.get(item.type);
+        if (!def) continue;
+        for (const p of (def.params || [])) {
+          if (p.type !== paramType) continue;
+          if (!item.params || item.params[p.id] !== oldName) continue;
+          if (restrict && !restrict(item, p)) continue;
+          item.params[p.id] = newName;
+          touched++;
+        }
+      }
+    };
+
+    walkEvents(sheet.events || [], (ev) => {
+      visit(ev.conditions, registry.conditions);
+      visit(ev.actions, registry.actions);
+    });
+
+    if (touched > 0) {
+      this.refresh();
+      this.onChange();
+    }
+  }
+
+  renameObjectRefs(oldName, newName) {
+    this._renameParamRefs(oldName, newName, 'target');
+    this._renameParamRefs(oldName, newName, 'prefab');
+  }
+
+  renameGlobalVarRefs(oldName, newName) {
+    this._renameParamRefs(oldName, newName, 'varname');
+  }
+
+  renameInstanceVarRefs(objName, oldName, newName) {
+    this._renameParamRefs(oldName, newName, 'instvar', (item) => {
+      const t = item.params && item.params.target;
+      return t === objName || t === '*' || t == null || t === '';
+    });
+  }
+
+  // ============================================================
   // HELPERS
   // ============================================================
 
@@ -1382,70 +1440,5 @@ export class EventSheetPanel {
 
   _recompile() {
     if (this.runtime) this.runtime.setSheet(this.project.sheet);
-  }
-
-    // ============================================================
-  // REFERENCE RENAMING
-  // ============================================================
-
-  /**
-   * Переименовывает ссылки в параметрах событий. Используется при
-   * переименовании объектов, глобальных переменных и instvar —
-   * чтобы невалидные ссылки в event sheet обновлялись автоматически.
-   *
-   * @param {string} oldName
-   * @param {string} newName
-   * @param {'target'|'varname'|'instvar'} paramType
-   * @param {(item, paramDef) => boolean} [restrict] — необязательный фильтр.
-   */
-  _renameParamRefs(oldName, newName, paramType, restrict) {
-    const sheet = this._getSheet();
-    if (!sheet || !oldName || !newName || oldName === newName) return;
-
-    let touched = 0;
-
-    const visit = (items, defs) => {
-      for (const item of items || []) {
-        const def = defs.get(item.type);
-        if (!def) continue;
-        for (const p of (def.params || [])) {
-          if (p.type !== paramType) continue;
-          if (!item.params || item.params[p.id] !== oldName) continue;
-          if (restrict && !restrict(item, p)) continue;
-          item.params[p.id] = newName;
-          touched++;
-        }
-      }
-    };
-
-    walkEvents(sheet.events || [], (ev) => {
-      visit(ev.conditions, registry.conditions);
-      visit(ev.actions, registry.actions);
-    });
-
-    if (touched > 0) {
-      this.refresh();
-      this.onChange();
-    }
-  }
-
-  renameObjectRefs(oldName, newName) {
-    this._renameParamRefs(oldName, newName, 'target');
-  }
-
-  renameGlobalVarRefs(oldName, newName) {
-    this._renameParamRefs(oldName, newName, 'varname');
-  }
-
-  /**
-   * Для instvar: обновляем только там, где target совпадает с объектом,
-   * у которого переименовали переменную, либо target = '*' / пусто.
-   * Это защищает от ложных переименований в других объектах.
-   */
-  renameInstanceVarRefs(objName, oldName, newName) {
-    this._renameParamRefs(oldName, newName, 'instvar', (item) => {
-      const t = item.params && item.params.target;
-      return t === objName || t === '*' || t == null || t === '';
-    });
   }
 }

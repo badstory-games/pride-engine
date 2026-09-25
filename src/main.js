@@ -200,6 +200,8 @@ async function main() {
     vars:  project.vars,
     dt,
     time:  performance.now() / 1000,
+    spawnBodyFor:   (obj) => bridge.spawnBodyFor(obj),
+    destroyBodyFor: (id)  => bridge.destroyBodyFor(id),
   }));
 
   // --- Inspector / Layers ---
@@ -889,11 +891,19 @@ async function main() {
     for (const obj of sorted) {
       const asset = obj.textureId && assets.get(obj.textureId);
       if (!asset) continue;
+
+      if (bridge.running && obj.template) continue;
+
       spriteBatch.beginGroup(obj.textureId);
       const cx = obj.x + obj.width  / 2;
       const cy = obj.y + obj.height / 2;
+
+      const alpha = (!bridge.running && obj.template)
+        ? obj.opacity * 0.4
+        : obj.opacity;
+
       spriteBatch.drawRotated(cx, cy, obj.width, obj.height, obj.rotation,
-        0, 0, 1, 1, 1, 1, 1, obj.opacity);
+        0, 0, 1, 1, 1, 1, 1, alpha);
     }
     spriteBatch.flush(renderPass, (texId) => {
       const a = texId && assets.get(texId);

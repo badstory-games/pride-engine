@@ -16,12 +16,6 @@ export function defaultPhysics() {
 }
 
 export class PhysicsBridge {
-  /**
-   * @param {Scene} scene
-   * @param {object} [opts]
-   * @param {number} [opts.gravityX=0]
-   * @param {number} [opts.gravityY=980]
-   */
   constructor(scene, opts = {}) {
     this.scene = scene;
 
@@ -38,14 +32,14 @@ export class PhysicsBridge {
     this.running = false;
     this.paused = false;
 
-    /** Снимок сцены для отката при Stop. */
+    /**
+     * Полный снимок сцены (scene.toJSON()) на момент старта.
+     * При Stop восстанавливаем всё — включая объекты, удалённые или
+     * созданные в процессе Play.
+     */
     this.snapshot = null;
 
-    /**
-     * Тело ↔ объект сцены.
-     * obj — прямая ссылка, чтобы sync() не звал scene.get() (он O(n)).
-     * @type {{bodyIndex:number, objectId:number, obj:object}[]}
-     */
+    /** @type {{bodyIndex:number, objectId:number, obj:object}[]} */
     this.mapping = [];
   }
 
@@ -53,10 +47,6 @@ export class PhysicsBridge {
     return this.world.bodies.count;
   }
 
-  /**
-   * Обновляет гравитацию на лету. Можно звать и во время Play.
-   * Идемпотентно: если значения те же — ничего не делает.
-   */
   setGravity(gx, gy) {
     if (this.gravityX === gx && this.gravityY === gy) return;
     this.gravityX = gx;
@@ -68,52 +58,77 @@ export class PhysicsBridge {
   start() {
     if (this.running) return;
 
-    this.snapshot = this.scene.objects.map((o) => ({
-      id:       o.id,
-      x:        o.x,
-      y:        o.y,
-      rotation: o.rotation,
-      opacity:  o.opacity,
-      visible:  o.visible,
-    }));
+    this.snapshot = structuredClone(this.scene.toJSON());
 
     this.world.clear();
     this.mapping.length = 0;
 
     for (const obj of this.scene.objects) {
-      const ph = obj.physics;
-      if (!ph || !ph.enabled) continue;
-
-      const cx = obj.x + obj.width  / 2;
-      const cy = obj.y + obj.height / 2;
-
-      const isCircle = ph.shape === 'circle';
-      const radius = isCircle
-        ? (ph.radius || Math.min(obj.width, obj.height) / 2)
-        : 0;
-
-      const bodyType = ph.type === 'static'    ? BodyType.STATIC
-                     : ph.type === 'kinematic' ? BodyType.KINEMATIC
-                     : BodyType.DYNAMIC;
-
-      const idx = this.world.createBody({
-        type: bodyType,
-        shape: isCircle ? ShapeType.CIRCLE : ShapeType.AABB,
-        x: cx, y: cy,
-        halfW: obj.width  / 2,
-        halfH: obj.height / 2,
-        radius,
-        density: ph.density ?? 1,
-        friction: ph.friction ?? 0.5,
-        restitution: ph.restitution ?? 0.2,
-        userId: obj.id,
-      });
-
-      this.mapping.push({ bodyIndex: idx, objectId: obj.id, obj });
+      if (obj.template) continue;   // шаблоны не участвуют в физике
+      this._addBody(obj);
     }
 
     this.running = true;
     this.paused = false;
+  }
+
+  /**
+   * Добавляет физическое тело для объекта. Используется и в start(),
+   * и при динамическом спавне во время Play.
+   */
+  _addBody(obj) {
+    const ph = obj.physics;
+    if (!ph || !ph.enabled) return null;
+
+    const cx = obj.x + obj.width  / 2;
+    const cy = obj.y + obj.height / 2;
+
+    const isCircle = ph.shape === 'circle';
+    const radius = isCircle
+      ? (ph.radius || Math.min(obj.width, obj.height) / 2)
+      : 0;
+
+    const bodyType = ph.type === 'static'    ? BodyType.STATIC
+                   : ph.type === 'kinematic' ? BodyType.KINEMATIC
+                   : BodyType.DYNAMIC;
+
+    const idx = this.world.createBody({
+      type: bodyType,
+      shape: isCircle ? ShapeType.CIRCLE : ShapeType.AABB,
+      x: cx, y: cy,
+      halfW: obj.width  / 2,
+      halfH: obj.height / 2,
+      radius,
+      density: ph.density ?? 1,
+      friction: ph.friction ?? 0.5,
+      restitution: ph.restitution ?? 0.2,
+      userId: obj.id,
+    });
+
+    this.mapping.push({ bodyIndex: idx, objectId: obj.id, obj });
+    return idx;
+  }
+
+  /** Публичный метод для action'а SpawnObject. */
+  spawnBodyFor(obj) {
+    if (!this.running) return null;
+    if (obj.template) return null;
+    return this._addBody(obj);
+  }
+
+  /**
+   * Помечает тело мёртвым (flags = 0) и убирает связку из mapping.
+   * Реальная чистка буфера не нужна: world.step пропускает тела с flags=0.
+   */
+  destroyBodyFor(objId) {
+    if (!this.running) return;
+    const i = this.mapping.findIndex((m) => m.objectId === objId);
+    if (i < 0) return;
+    const { bodyIndex } = this.mapping[i];
+    if (bodyIndex >= 0 && bodyIndex < this.world.bodies.count) {
+      this.world.bodies.flags[bodyIndex] = 0;
+    }
+    this.mapping.splice(i, 1);
   }
 
   pause() {
@@ -128,17 +143,8 @@ export class PhysicsBridge {
     if (!this.running) return;
 
     if (this.snapshot) {
-      const byId = new Map(this.snapshot.map((s) => [s.id, s]));
-      for (const obj of this.scene.objects) {
-        const s = byId.get(obj.id);
-        if (s) {
-          obj.x        = s.x;
-          obj.y        = s.y;
-          obj.rotation = s.rotation;
-          obj.opacity  = s.opacity;
-          obj.visible  = s.visible;
-        }
-      }
+      // Полное восстановление сцены из снимка.
+      this.scene.fromJSON(this.snapshot);
     }
 
     this.world.clear();
@@ -156,6 +162,8 @@ export class PhysicsBridge {
     for (let i = 0; i < m.length; i++) {
       const bodyIndex = m[i].bodyIndex;
       const obj = m[i].obj;
+      // Не двигаем мёртвые тела (не должно случаться, но перестраховка).
+      if (store.flags[bodyIndex] === 0) continue;
       obj.x = store.x[bodyIndex] - obj.width  / 2;
       obj.y = store.y[bodyIndex] - obj.height / 2;
     }

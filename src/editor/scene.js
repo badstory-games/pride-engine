@@ -72,13 +72,32 @@ export class Scene {
       layerId: this.layers[0].id,
       textureId: null,
       visible: true,
+      template: false,
       properties: {},
       physics: defaultPhysics(),
       ...partial,
     };
     if (!obj.properties || typeof obj.properties !== 'object') obj.properties = {};
+    if (obj.template === undefined) obj.template = false;
     this.objects.push(obj);
     return obj;
+  }
+
+  /**
+   * Создаёт копию объекта-шаблона в точке (x, y) — координаты это
+   * ЦЕНТР нового объекта. Возвращает новый объект или null.
+   *
+   * Клон наследует все свойства шаблона (текстуру, физику, variables),
+   * но помечается template: false.
+   */
+  spawnFromTemplate(template, x, y) {
+    if (!template) return null;
+    const clone = structuredClone(template);
+    delete clone.id;
+    clone.x = x - template.width  / 2;
+    clone.y = y - template.height / 2;
+    clone.template = false;
+    return this.add(clone);
   }
 
   remove(id) {
@@ -90,16 +109,6 @@ export class Scene {
     return this.objects.find((o) => o.id === id) || null;
   }
 
-  /**
-   * Видимые объекты, отсортированные по индексу слоя (снизу вверх).
-   *
-   * ⚠️ Возвращаемый массив переиспользуется между вызовами.
-   *    Потребляйте результат сразу — не сохраняйте ссылку.
-   *
-   * Внутри — ноль аллокаций: только push в предвыделенный буфер
-   * и in-place sort. Layer-index кэшируется и инвалидируется
-   * при изменении списка слоёв.
-   */
   getSortedByLayer() {
     if (this._layerIdxDirty) {
       this._layerIdx.clear();
@@ -122,8 +131,6 @@ export class Scene {
       buf.push(o);
     }
 
-    // Array#sort стабилен (ES2019+), поэтому объекты одного слоя
-    // сохраняют исходный порядок добавления — z-order корректен.
     buf.sort((a, b) => idx.get(a.layerId) - idx.get(b.layerId));
     return buf;
   }
@@ -161,6 +168,7 @@ export class Scene {
       if (!o.name) o.name = 'Объект';
       if (!o.physics) o.physics = defaultPhysics();
       if (!o.properties || typeof o.properties !== 'object') o.properties = {};
+      if (o.template === undefined) o.template = false;
     }
   }
 }

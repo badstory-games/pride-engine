@@ -96,6 +96,8 @@ export async function startGame(projectData, assetsData, opts = {}) {
     vars,
     dt,
     time: performance.now() / 1000,
+    spawnBodyFor:   (obj) => bridge.spawnBodyFor(obj),
+    destroyBodyFor: (id)  => bridge.destroyBodyFor(id),
   }));
 
   window.addEventListener('keydown', (e) => {
@@ -125,6 +127,7 @@ export async function startGame(projectData, assetsData, opts = {}) {
     // Sprites
     spriteBatch.begin();
     for (const obj of scene.getSortedByLayer()) {
+      if (obj.template) continue;
       const asset = obj.textureId && assets.get(obj.textureId);
       if (!asset) continue;
       spriteBatch.beginGroup(obj.textureId);

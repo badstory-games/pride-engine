@@ -26,8 +26,14 @@ export function computeDefaultParams(def, { scene, vars }) {
 function computeDefaultParam(p, seen, { scene, vars }) {
   switch (p.type) {
     case 'target': {
-      // '*' всегда валиден и означает «все динамические тела».
       return p.default ?? '*';
+    }
+
+    case 'prefab': {
+      const names = [...new Set(
+        scene.objects.map((o) => o.name).filter(Boolean)
+      )].sort();
+      return names[0] || '';
     }
 
     case 'varname': {

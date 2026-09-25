@@ -1,5 +1,9 @@
 import { registry } from './registry.js';
-import { bodyMatchesTarget, findSceneObjectByName, forEachMatchingObject } from './helpers.js';
+import {
+  bodyMatchesTarget,
+  findSceneObjectByName,
+  forEachMatchingObject,
+} from './helpers.js';
 
 export function registerActions() {
   // ---------- PHYSICS ----------
@@ -122,7 +126,6 @@ export function registerActions() {
   });
 
   // ---------- INSTANCE VARIABLES ----------
-
   registry.actions.register('SetInstanceVar', {
     label: 'Задать переменную объекта',
     category: 'Объект',
@@ -168,6 +171,46 @@ export function registerActions() {
         obj.properties = obj.properties || {};
         obj.properties[name] = (obj.properties[name] ?? 0) - value;
       });
+    },
+  });
+
+  // ---------- SPAWN / DESTROY ----------
+  registry.actions.register('SpawnObject', {
+    label: 'Создать объект',
+    category: 'Объект',
+    params: [
+      { id: 'prefab', type: 'prefab', label: 'Шаблон', default: '' },
+      { id: 'x',      type: 'number', label: 'X',      default: 0 },
+      { id: 'y',      type: 'number', label: 'Y',      default: 0 },
+    ],
+    compile: ({ prefab, x, y }) => (ctx) => {
+      if (!prefab) return;
+      const template = findSceneObjectByName(ctx, prefab);
+      if (!template) return;
+
+      const clone = ctx.scene.spawnFromTemplate(template, x, y);
+      if (!clone) return;
+
+      if (ctx.spawnBodyFor) ctx.spawnBodyFor(clone);
+    },
+  });
+
+  registry.actions.register('Destroy', {
+    label: 'Удалить объект',
+    category: 'Объект',
+    params: [
+      { id: 'target', type: 'target', label: 'Объект', default: '*' },
+    ],
+    compile: ({ target }) => (ctx) => {
+      // Собираем id до удаления: remove делает splice,
+      // нельзя мутировать массив во время обхода.
+      const ids = [];
+      forEachMatchingObject(ctx, target, (obj) => ids.push(obj.id));
+
+      for (const id of ids) {
+        if (ctx.destroyBodyFor) ctx.destroyBodyFor(id);
+        ctx.scene.remove(id);
+      }
     },
   });
 }
