@@ -9,6 +9,7 @@ export function registerActions() {
   // ---------- PHYSICS ----------
   registry.actions.register('ApplyImpulse', {
     label: 'Применить импульс',
+    description: 'Добавляет импульс к скорости тела. Импульс делится на массу, поэтому лёгкие объекты реагируют сильнее, а тяжёлые слабее. Для прыжка игрока обычно идёт вверх с отрицательным Y.',
     category: 'Физика',
     params: [
       { id: 'target', type: 'target', label: 'Объект',    default: '*' },
@@ -27,6 +28,7 @@ export function registerActions() {
 
   registry.actions.register('SetVelocity', {
     label: 'Задать скорость',
+    description: 'Жёстко задаёт скорость тела в пикселях в секунду. Масса не учитывается: скорость одна для всех. Отлично подходит для управления персонажем: пока держишь клавишу, скорость постоянная.',
     category: 'Физика',
     params: [
       { id: 'target', type: 'target', label: 'Объект', default: '*' },
@@ -46,6 +48,7 @@ export function registerActions() {
   // ---------- TRANSFORM ----------
   registry.actions.register('SetPosition', {
     label: 'Задать позицию',
+    description: 'Перемещает тело в точку X, Y. Работает с любым типом тела, включая статические и кинематические. Полезно для телепортации, респавна и расстановки объектов по логике.',
     category: 'Трансформация',
     params: [
       { id: 'target', type: 'target', label: 'Объект', default: '*' },
@@ -64,6 +67,7 @@ export function registerActions() {
 
   registry.actions.register('SetVisible', {
     label: 'Задать видимость',
+    description: 'Включает или выключает отрисовку объекта. Скрытый объект продолжает существовать: у него работает физика, обновляются переменные, но на экране его не видно.',
     category: 'Отображение',
     params: [
       { id: 'target',  type: 'target', label: 'Объект',    default: '*' },
@@ -83,6 +87,7 @@ export function registerActions() {
 
   registry.actions.register('SetOpacity', {
     label: 'Задать прозрачность',
+    description: 'Задаёт прозрачность объекта: 0 полностью прозрачный, 1 непрозрачный. Промежуточные значения дают полупрозрачность. Удобно для эффектов появления, затухания, мигания.',
     category: 'Отображение',
     params: [
       { id: 'target',  type: 'target', label: 'Объект',       default: '*' },
@@ -103,6 +108,7 @@ export function registerActions() {
   // ---------- SYSTEM ----------
   registry.actions.register('AddGlobalVar', {
     label: 'Прибавить к глобальной переменной',
+    description: 'Прибавляет число к глобальной переменной. Значение может быть отрицательным, тогда оно вычитается. Классика для очков, счётчиков и таймеров.',
     category: 'Система',
     params: [
       { id: 'name',  type: 'varname', label: 'Имя',      default: 'score' },
@@ -115,6 +121,7 @@ export function registerActions() {
 
   registry.actions.register('SetGlobalVar', {
     label: 'Задать глобальную переменную',
+    description: 'Присваивает глобальной переменной новое значение, отбрасывая прежнее. Для накопления используйте «Прибавить к глобальной переменной».',
     category: 'Система',
     params: [
       { id: 'name',  type: 'varname', label: 'Имя',      default: 'score' },
@@ -128,6 +135,7 @@ export function registerActions() {
   // ---------- INSTANCE VARIABLES ----------
   registry.actions.register('SetInstanceVar', {
     label: 'Задать переменную объекта',
+    description: 'Задаёт значение переменной у всех объектов с именем target. Старое значение отбрасывается. Для накопления используйте «Прибавить» или «Отнять».',
     category: 'Объект',
     params: [
       { id: 'target', type: 'target',  label: 'Объект',     default: '*' },
@@ -144,6 +152,7 @@ export function registerActions() {
 
   registry.actions.register('AddInstanceVar', {
     label: 'Прибавить к переменной объекта',
+    description: 'Прибавляет число к переменной у всех объектов с именем target. Значение может быть отрицательным. Удобно для лечения, восстановления ресурсов, бонусов.',
     category: 'Объект',
     params: [
       { id: 'target', type: 'target',  label: 'Объект',     default: '*' },
@@ -160,6 +169,7 @@ export function registerActions() {
 
   registry.actions.register('SubtractInstanceVar', {
     label: 'Отнять от переменной объекта',
+    description: 'Отнимает число от переменной у всех объектов с именем target. Основной способ нанести урон: отнять у врага HP, отнять у игрока патроны, списать ресурс.',
     category: 'Объект',
     params: [
       { id: 'target', type: 'target',  label: 'Объект',     default: '*' },
@@ -177,6 +187,7 @@ export function registerActions() {
   // ---------- SPAWN / DESTROY ----------
   registry.actions.register('SpawnObject', {
     label: 'Создать объект',
+    description: 'Создаёт копию объекта-шаблона в точке X, Y. Координаты задают центр нового объекта, а не левый верхний угол. Копия становится обычным объектом сцены: у неё работает физика и события.',
     category: 'Объект',
     params: [
       { id: 'prefab', type: 'prefab', label: 'Шаблон', default: '' },
@@ -197,6 +208,7 @@ export function registerActions() {
 
   registry.actions.register('Destroy', {
     label: 'Удалить объект',
+    description: 'Удаляет объект со сцены и связанное с ним физическое тело. Действие необратимо: объект исчезает полностью и не может быть восстановлен без пересоздания.',
     category: 'Объект',
     params: [
       { id: 'target', type: 'target', label: 'Объект', default: '*' },

@@ -59,9 +59,13 @@ export class EventPopover {
     let html = `<input type="text" class="es-pop-search" placeholder="Поиск…">`;
     html += `<div class="es-pop-list">`;
     for (const [cat, arr] of groups) {
-      html += `<div class="es-pop-cat" data-cat="${cat}">${cat}</div>`;
+      html += `<div class="es-pop-cat" data-cat="${escapeAttr(cat)}">${escapeHtml(cat)}</div>`;
       for (const it of arr) {
-        html += `<button class="es-pop-item" data-type="${it.id}">${it.label}</button>`;
+        const titleParts = [];
+        if (it.description) titleParts.push(it.description);
+        titleParts.push(`ID: ${it.id}`);
+        const title = escapeAttr(titleParts.join('\n\n'));
+        html += `<button class="es-pop-item" data-type="${escapeAttr(it.id)}" title="${title}">${escapeHtml(it.label)}</button>`;
       }
     }
     html += `</div>`;
@@ -112,4 +116,14 @@ export class EventPopover {
   }
 
   get isOpen() { return !this.el.hidden; }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+function escapeAttr(s) {
+  return escapeHtml(s);
 }

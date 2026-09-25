@@ -19,6 +19,7 @@ import { Editor } from './editor/editor.js';
 import { EditorController } from './editor/input.js';
 import { drawOverlay } from './editor/overlay.js';
 import { ShortcutsModal } from './editor/shortcuts-modal.js';
+import { DocsModal } from './editor/docs-modal.js';
 import { Inspector } from './editor/inspector.js';
 import { LayersPanel } from './editor/layers-panel.js';
 import { Tabs } from './editor/tabs.js';
@@ -27,6 +28,8 @@ import { EventPalette }     from './editor/event-palette.js';
 import { VarsPanel } from './editor/vars-panel.js';
 import { History } from './editor/history.js';
 import { PerfOverlay } from './editor/perf-overlay.js';
+import { Profiler } from './editor/profiler.js';
+import { ProfilerModal } from './editor/profiler-modal.js';
 import { Clipboard } from './editor/clipboard.js';
 import { TemplateModal } from './editor/template-modal.js';
 import { getTemplate } from './editor/templates.js';
@@ -78,7 +81,7 @@ async function main() {
 
   // Renderer реагирует на освобождение GPU-текстур из AssetManager:
   // удаляет bind-group из внутреннего кэша. Без этого при частой
-  // смене/переименовании ассетов копились бы мёртвые bind groups.
+  // смене / переименовании ассетов копились бы мёртвые bind groups.
   const assets = new AssetManager(renderer.device, {
     onTextureDisposed: (texture) => renderer.releaseTexture(texture),
   });
@@ -123,6 +126,13 @@ async function main() {
   const snapshotsModal = new SnapshotsModal();
 
   const perfOverlay = new PerfOverlay(document.getElementById('canvas-wrap'));
+  const profiler = new Profiler();
+  const profilerModal = new ProfilerModal();
+
+  // Профайлер получает каждый кадр через onFrame — точные frame/update/render.
+  perfOverlay.onFrame = (f, u, r) => profiler.capture(f, u, r);
+  profiler.onProgress = (t, total) => profilerModal.setProgress(t, total);
+  profiler.onFinish   = (report) => profilerModal.showReport(report);
 
   const logPanel = new LogPanel(document.getElementById('log-panel'));
   document.getElementById('btn-logs').addEventListener('click', () => logPanel.toggle());
@@ -234,6 +244,26 @@ async function main() {
   controller.onToggleShortcuts = () => shortcutsModal.toggle();
   controller.isShortcutsOpen  = () => shortcutsModal.isOpen;
 
+  // --- Docs modal (F2) ---
+  const docsModal = new DocsModal();
+  document.getElementById('btn-docs')
+    .addEventListener('click', () => docsModal.toggle());
+
+  // --- Profiler (F3) ---
+  function doProfile() {
+    if (profiler.isRecording) return;
+    if (profilerModal.isOpen) return;
+
+    profilerModal.open({
+      duration: 5,
+      onCancel: () => profiler.cancel(),
+    });
+    profiler.start(5);
+  }
+
+  document.getElementById('btn-profiler')
+    .addEventListener('click', doProfile);
+
   // --- Theme toggle ---
   const btnTheme = document.getElementById('btn-theme');
   function refreshThemeIcon() {
@@ -310,9 +340,7 @@ async function main() {
   }
 
   // ---- Bootstrap assetsScope и восстанавливаем ресурсы ИЗ УЖЕ ЗАГРУЖЕННОГО
-  //      проекта. Раньше scope читался из localStorage до loadProject(),
-  //      из-за чего при отсутствии assetsScope в старом проекте возникал
-  //      рассинхрон со сгенерированным id. Теперь — единый источник истины.
+  //      проекта. Единый источник истины — project.assetsScope.
   if (!project.assetsScope) project.assetsScope = makeScopeId();
   await assets.useScope(project.assetsScope);
 
@@ -803,8 +831,10 @@ async function main() {
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
 
-    if (e.code === 'F8') { e.preventDefault(); perfOverlay.toggle(); return; }
-    if (e.code === 'F9') { e.preventDefault(); doBenchmark();      return; }
+    if (e.code === 'F2')  { e.preventDefault(); docsModal.toggle(); return; }
+    if (e.code === 'F3')  { e.preventDefault(); doProfile();       return; }
+    if (e.code === 'F8')  { e.preventDefault(); perfOverlay.toggle(); return; }
+    if (e.code === 'F9')  { e.preventDefault(); doBenchmark();      return; }
     if (e.code === 'F10') { e.preventDefault(); logPanel.toggle(); return; }
 
     const inField = isEditableTarget();

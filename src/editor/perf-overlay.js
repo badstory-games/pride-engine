@@ -1,6 +1,9 @@
 /**
  * Плавающий оверлей производительности.
  * Домен — редактор, в экспорт не попадает.
+ *
+ * onFrame — необязательный колбэк, вызывается в конце tick() с точными
+ * значениями текущего кадра. Используется профайлером.
  */
 export class PerfOverlay {
   constructor(container) {
@@ -34,6 +37,9 @@ export class PerfOverlay {
     this._lastUiUpdate = 0;
 
     this._lastTickTime = 0;
+
+    /** @type {((frameMs: number, updateMs: number, renderMs: number) => void) | null} */
+    this.onFrame = null;
   }
 
   _buildRows(labels) {
@@ -94,6 +100,13 @@ export class PerfOverlay {
     if (now - this._lastUiUpdate >= 200) {
       this._lastUiUpdate = now;
       this._renderUi();
+    }
+
+    // Профайлер подписывается сюда — получает точные значения кадра.
+    // Ошибку глотаем, чтобы сбой профайлера не ронял игровой цикл.
+    if (this.onFrame) {
+      try { this.onFrame(this._frameMs, this._updateMs, this._renderMs); }
+      catch { /* ignore */ }
     }
   }
 

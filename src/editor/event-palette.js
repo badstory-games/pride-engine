@@ -63,7 +63,14 @@ export class EventPalette {
         el.draggable = true;
         el.dataset.kind = kind;
         el.dataset.type = it.id;
-        el.title = it.id;
+
+        // Подсказка: сначала описание, потом категория и id.
+        const titleParts = [];
+        if (it.description) titleParts.push(it.description);
+        titleParts.push(`Категория: ${it.category || 'Прочее'}`);
+        titleParts.push(`ID: ${it.id}`);
+        el.title = titleParts.join('\n\n');
+
         el.innerHTML = `<span class="pal-item-label">${it.label}</span>`;
         listEl.appendChild(el);
       }

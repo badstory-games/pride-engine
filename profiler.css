@@ -1,0 +1,214 @@
+/* ============================================================
+   PROFILER MODAL (F3)
+   ============================================================ */
+
+.profiler-backdrop {
+  /* базовый .modal-backdrop уже даёт фон и blur — тут ничего не переопределяем */
+}
+
+.profiler-box {
+  background: var(--bg-modal);
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  width: min(880px, 94vw);
+  height: min(760px, 90vh);
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modal-box-in 120ms ease-out;
+}
+
+.profiler-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.profiler-title {
+  margin: 0;
+  font: 600 14px system-ui;
+  letter-spacing: 0.3px;
+  color: var(--accent-fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.profiler-title > .icon { font-size: 16px; color: var(--accent-head); }
+
+.profiler-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px 20px 4px;
+}
+
+/* ---------- Recording state ---------- */
+
+.profiler-recording {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 40px 20px 20px;
+  text-align: center;
+  min-height: 300px;
+}
+
+.profiler-rec-status {
+  font: 600 13px system-ui;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent-head);
+}
+
+.profiler-rec-time {
+  font: 600 42px/1 ui-monospace, monospace;
+  color: var(--fg-strong);
+}
+.profiler-rec-time > span {
+  font: 400 16px ui-monospace, monospace;
+  color: var(--fg-5);
+}
+
+.profiler-rec-bar {
+  width: min(420px, 80%);
+  height: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.profiler-rec-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 100ms linear;
+}
+
+.profiler-rec-hint {
+  max-width: 420px;
+  font: 12px/1.5 system-ui;
+  color: var(--fg-5);
+}
+
+/* ---------- Result state ---------- */
+
+.profiler-result {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profiler-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.profiler-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+
+.profiler-summary-label {
+  font: 10px system-ui;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--fg-5);
+}
+
+.profiler-summary-value {
+  font: 600 18px ui-monospace, monospace;
+  color: var(--fg-strong);
+}
+.profiler-summary-value.bad {
+  color: var(--danger);
+}
+
+.profiler-chart-wrap {
+  position: relative;
+  height: 220px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.profiler-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.profiler-tables {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.profiler-worst h4 {
+  margin: 0 0 6px;
+  font: 600 11px system-ui;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent-head);
+}
+
+.profiler-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 11px ui-monospace, monospace;
+  color: var(--fg-1);
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.profiler-table th,
+.profiler-table td {
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border-soft);
+}
+.profiler-table tr:last-child td { border-bottom: none; }
+
+.profiler-table th {
+  background: var(--bg-event-head);
+  color: var(--fg-5);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.profiler-table th:first-child,
+.profiler-table td:first-child {
+  text-align: left;
+}
+
+.profiler-table-small th,
+.profiler-table-small td {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+/* ---------- Footer ---------- */
+
+.profiler-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--border-soft);
+  margin-top: 8px;
+  flex: 0 0 auto;
+}

@@ -113,6 +113,13 @@ const SPRITE = `
     <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
     <line x1="12" y1="17" x2="12.01" y2="17"/>
   </symbol>
+  <symbol id="icon-book" viewBox="0 0 24 24">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+  </symbol>
+  <symbol id="icon-activity" viewBox="0 0 24 24">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+  </symbol>
   <symbol id="icon-terminal" viewBox="0 0 24 24">
     <polyline points="4 17 10 11 4 5"/>
     <line x1="12" y1="19" x2="20" y2="19"/>

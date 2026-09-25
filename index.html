@@ -15,6 +15,8 @@
   })();
 </script>
 <link rel="stylesheet" href="./styles.css">
+<link rel="stylesheet" href="./docs.css">
+<link rel="stylesheet" href="./profiler.css">
 </head>
 <body>
 <div id="app">
@@ -23,6 +25,14 @@
 
     <button id="btn-shortcuts" title="Горячие клавиши (F1)" aria-label="Горячие клавиши">
       <svg class="icon"><use href="#icon-help"/></svg>
+    </button>
+
+    <button id="btn-docs" class="topbtn" title="Документация (F2)" aria-label="Документация">
+      <svg class="icon"><use href="#icon-book"/></svg>
+    </button>
+
+    <button id="btn-profiler" class="topbtn" title="Профайлер (F3)" aria-label="Профайлер">
+      <svg class="icon"><use href="#icon-activity"/></svg>
     </button>
 
     <button id="btn-theme" class="topbtn" title="Светлая / тёмная тема" aria-label="Переключить тему">
@@ -81,7 +91,7 @@
       </button>
     </div>
 
-    <span class="stage">Этап 7 — Assets</span>
+    <span class="stage">Этап 7 — Profiler</span>
   </header>
 
   <div id="main">
@@ -220,6 +230,8 @@
         <h3>Интерфейс</h3>
         <table class="sc-table">
           <tr><td><kbd>F1</kbd> / <kbd>?</kbd></td><td>Эта справка</td></tr>
+          <tr><td><kbd>F2</kbd></td><td>Документация</td></tr>
+          <tr><td><kbd>F3</kbd></td><td>Профайлер (5 сек записи)</td></tr>
           <tr><td><kbd>F8</kbd></td><td>Оверлей производительности</td></tr>
           <tr><td><kbd>F9</kbd></td><td>Бенчмарк (500–5000 объектов)</td></tr>
           <tr><td><kbd>F10</kbd></td><td>Панель логов</td></tr>
