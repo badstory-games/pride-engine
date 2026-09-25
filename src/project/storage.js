@@ -3,7 +3,7 @@ const KEY = 'pride.project.v1';
 export function saveProject(project) {
   try {
     const payload = {
-      version: 5,
+      version: 6,
       scene:        project.scene.toJSON(),
       sheet:        project.sheet,
       vars:         project.vars,
@@ -15,6 +15,7 @@ export function saveProject(project) {
       gravityX:     project.gravityX ?? 0,
       gravityY:     project.gravityY ?? 980,
       hintsShown:   project.hintsShown || {},
+      assetsScope:  project.assetsScope || null,
     };
     localStorage.setItem(KEY, JSON.stringify(payload));
     return true;
@@ -51,6 +52,7 @@ export function loadProject(project) {
     project.gravityX     = data.gravityX ?? 0;
     project.gravityY     = data.gravityY ?? 980;
     project.hintsShown   = data.hintsShown || {};
+    project.assetsScope  = data.assetsScope || null;
 
     return true;
   } catch (e) {

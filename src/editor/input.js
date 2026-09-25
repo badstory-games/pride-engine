@@ -1,5 +1,7 @@
 import { pickTopmost, objectsInRect } from './hit-test.js';
 
+const DEFAULT_TEXTURE = '__white';
+
 export class EditorController {
   constructor(canvas, camera, editor) {
     this.canvas = canvas;
@@ -101,7 +103,7 @@ export class EditorController {
           const obj = ed.scene.add({
             x: w.x - 32, y: w.y - 32,
             width: 64, height: 64,
-            textureId: 'player',
+            textureId: DEFAULT_TEXTURE,
           });
           ed.select(obj.id, false);
         };
@@ -163,7 +165,7 @@ export class EditorController {
       if (ed.drag) {
         ed.drag = null;
         const h = this._history();
-        if (h) h.commit();       // закрываем drag-транзакцию
+        if (h) h.commit();
         ed.onChange();
       } else if (ed.box) {
         const objs = objectsInRect(ed.scene, ed.box.x0, ed.box.y0, ed.box.x1, ed.box.y1);
@@ -182,7 +184,7 @@ export class EditorController {
             const obj = ed.scene.add({
               x: x0, y: y0,
               width: rw, height: rh,
-              textureId: 'player',
+              textureId: DEFAULT_TEXTURE,
             });
             ed.select(obj.id, false);
           };
@@ -219,8 +221,6 @@ export class EditorController {
         return;
       }
 
-      // Не вмешиваемся, если фокус в поле ввода, textarea или в
-      // contenteditable-элементе (текст комментария event sheet).
       const el = document.activeElement;
       if (!el) return;
       const tag = el.tagName;
@@ -239,7 +239,6 @@ export class EditorController {
       }
 
       if (e.code === 'Escape') {
-        // Откатываем незакрытую транзакцию (например, при отмене drag'а).
         const h = ed.history;
         if (h && h.pending) h.rollback();
 

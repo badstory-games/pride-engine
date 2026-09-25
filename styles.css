@@ -6,6 +6,7 @@
 /* ---------- DARK (по умолчанию) ---------- */
 :root,
 :root[data-theme="dark"] {
+  color-scheme: dark;   /* ← нативные контролы (select, option, скроллы) в тёмной схеме */
   --bg-app:        #1a1a1a;
   --bg-canvas:     #161616;
   --bg-panel:      #202020;
@@ -81,6 +82,7 @@
 
 /* ---------- LIGHT ---------- */
 :root[data-theme="light"] {
+  color-scheme: light;
   --bg-app:        #f4f5f7;
   --bg-canvas:     #e8eaed;
   --bg-panel:      #ffffff;
@@ -917,6 +919,11 @@ aside h3 {
 .es-param input[type="text"]   { width: 110px; }
 .es-param input:focus,
 .es-param select:focus { outline: none; border-color: var(--accent); }
+.es-param select option {
+  background: var(--bg-input);
+  color: var(--fg);
+  padding: 4px 8px;
+}
 .es-param-error {
   color: var(--danger);
   font: 11px ui-monospace, monospace;
@@ -1840,3 +1847,229 @@ aside h3 {
 
 .es-group.disabled .es-element-drag { opacity: 0.6; }
 .es-event.disabled .es-element-drag { opacity: 0.6; }
+
+/* ============================================================
+   ASSETS VIEW
+   ============================================================ */
+#assets-view {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-app);
+  overflow-y: auto;
+  padding: 56px 24px 24px;
+  z-index: 5;
+}
+#assets-panel {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.assets-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.assets-toolbar h3 {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--fg-5);
+}
+.assets-toolbar-actions { display: flex; gap: 6px; }
+
+.assets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assets-empty {
+  padding: 30px;
+  color: var(--fg-8);
+  font-style: italic;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.assets-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 28px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  transition: border-color 80ms;
+}
+.assets-row:hover { border-color: var(--border-input); }
+
+.assets-preview {
+  width: 56px;
+  height: 56px;
+  border-radius: 4px;
+  border: 1px solid var(--border-input);
+  background:
+    repeating-conic-gradient(
+      var(--bg-input) 0% 25%,
+      var(--bg-panel) 0% 50%
+    ) 50% / 12px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.assets-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: pixelated;
+  display: block;
+}
+.assets-preview.is-white {
+  background: #ffffff;
+  background-image: none;
+}
+.assets-preview-empty {
+  width: 8px;
+  height: 8px;
+  background: var(--fg-7);
+  border-radius: 50%;
+}
+
+.assets-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.assets-name {
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  color: var(--fg);
+  padding: 4px 8px;
+  border-radius: 3px;
+  font: 12px ui-monospace, monospace;
+  width: 100%;
+  min-width: 0;
+}
+.assets-name:hover:not(:disabled) { border-color: var(--border-strong); }
+.assets-name:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-input-focus);
+}
+.assets-name:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.assets-name.invalid {
+  border-color: var(--danger);
+  background: var(--bg-danger-hl);
+  color: var(--danger);
+}
+
+.assets-sub {
+  font: 11px ui-monospace, monospace;
+  color: var(--fg-5);
+  padding-left: 2px;
+}
+
+.assets-del {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-8);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: background 80ms, color 80ms, border-color 80ms;
+}
+.assets-del:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--bg-danger-hl);
+  border-color: var(--danger);
+}
+.assets-del:disabled { opacity: 0.3; cursor: default; }
+.assets-del > .icon { font-size: 14px; }
+
+/* ============================================================
+   EVENT VALIDATION — предупреждения
+   ============================================================ */
+
+:root,
+:root[data-theme="dark"] {
+  --warn-fg: #e6a540;
+}
+:root[data-theme="light"] {
+  --warn-fg: #b8801e;
+}
+
+/* Полоска слева у события с проблемными параметрами. */
+.es-event.has-warning {
+  box-shadow: inset 3px 0 0 0 var(--warn-fg);
+}
+
+/* Иконка ⚠ в шапке события. */
+.es-warn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--warn-fg);
+  cursor: help;
+  flex: 0 0 auto;
+  margin-right: 4px;
+}
+.es-warn > .icon {
+  font-size: 14px;
+  pointer-events: none;
+}
+
+/* Невалидный параметр внутри строки условия/действия. */
+.es-param.invalid > input,
+.es-param.invalid > select {
+  border-color: var(--danger);
+  color: var(--danger);
+  box-shadow: inset 3px 0 0 0 var(--danger);
+}
+.es-param.invalid > input:focus,
+.es-param.invalid > select:focus {
+  border-color: var(--danger);
+  box-shadow:
+    inset 3px 0 0 0 var(--danger),
+    0 0 0 2px rgba(230, 102, 102, 0.25);
+}
+.es-param.invalid > span:first-child {
+  color: var(--danger);
+}
+
+/* ============================================================
+   GLOBAL TOOLTIP
+   ============================================================ */
+.es-tooltip {
+  position: fixed;
+  z-index: 9999;
+  max-width: 380px;
+  padding: 8px 12px;
+  background: var(--bg-modal);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  box-shadow: var(--shadow-popup);
+  font: 12px/1.5 system-ui;
+  white-space: pre-line;
+  word-break: break-word;
+  pointer-events: none;
+  user-select: none;
+}
+.es-tooltip[hidden] { display: none; }

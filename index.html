@@ -77,7 +77,7 @@
       </button>
     </div>
 
-    <span class="stage">Этап 7 — UX / Themes / Templates</span>
+    <span class="stage">Этап 7 — Assets</span>
   </header>
 
   <div id="main">
@@ -100,6 +100,7 @@
       <div id="view-tabs">
         <button class="vtab active" data-tab="layout">Сцена</button>
         <button class="vtab"        data-tab="event-sheet">События</button>
+        <button class="vtab"        data-tab="assets">Ресурсы</button>
         <button class="vtab"        data-tab="settings">Проект</button>
       </div>
 
@@ -110,6 +111,10 @@
         <aside id="event-palette"></aside>
         <div id="event-sheet-main"></div>
         <aside id="vars-panel"></aside>
+      </div>
+
+      <div id="assets-view" hidden>
+        <div id="assets-panel"></div>
       </div>
 
       <div id="project-settings-view" hidden>
@@ -193,8 +198,7 @@
         <table class="sc-table">
           <tr><td><kbd>Тянуть</kbd> из палитры</td><td>Добавить условие / действие</td></tr>
           <tr><td><kbd>Двойной клик</kbd> по палитре</td><td>Добавить в первое событие</td></tr>
-          <tr><td><kbd>Тянуть</kbd> за ручку</td><td>Перенос строки в другое событие</td></tr>
-          <tr><td><kbd>Тянуть</kbd> за шапку</td><td>Перестановка событий</td></tr>
+          <tr><td><kbd>Тянуть</kbd> за ручку</td><td>Перенос строки / элемента</td></tr>
         </table>
       </section>
       <section>

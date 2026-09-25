@@ -31,6 +31,7 @@ import { Clipboard } from './editor/clipboard.js';
 import { TemplateModal } from './editor/template-modal.js';
 import { getTemplate } from './editor/templates.js';
 import { ProjectSettings } from './editor/project-settings.js';
+import { AssetsPanel } from './editor/assets-panel.js';
 import { runBenchmark, formatResults } from './editor/benchmark.js';
 
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
@@ -40,10 +41,12 @@ import { exportWebGame } from './export/exporter.js';
 import { Modal } from './editor/modal.js';
 import { initIcons } from './editor/icons.js';
 import { initTheme, getTheme, toggleTheme } from './editor/theme.js';
+import { Tooltip } from './editor/tooltip.js';
 
 async function main() {
   initIcons();
   initTheme();
+  new Tooltip();   // ← глобальный тултип, один экземпляр на весь UI
 
   registerConditions();
   registerActions();
@@ -62,33 +65,24 @@ async function main() {
 
   const assets = new AssetManager(renderer.device);
 
+  // ---- __white: 1×1 белая текстура. Системная: без blob, не выгружается ----
   {
     const img = new ImageData(1, 1);
     img.data.set([255, 255, 255, 255]);
     const bmp = await createImageBitmap(img);
     assets.loadFromBitmap('__white', bmp);
+
+    // Превью для панели «Ресурсы» — маленький белый квадрат.
+    const c = document.createElement('canvas');
+    c.width = 8; c.height = 8;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, 8, 8);
+    assets.setPreviewUrl('__white', c.toDataURL('image/png'));
   }
 
-  try {
-    const a = await assets.loadPNG('player', './assets/player.png');
-    console.log(`[assets] player.png ${a.width}×${a.height}`);
-  } catch (err) {
-    console.warn('[assets] fallback:', err.message);
-    const size = 64;
-    const img = new ImageData(size, size);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const i = (y * size + x) * 4;
-        const check = ((x >> 3) + (y >> 3)) % 2 === 0;
-        img.data[i]     = check ? 255 : 100;
-        img.data[i + 1] = check ? 100 : 255;
-        img.data[i + 2] = check ? 100 : 100;
-        img.data[i + 3] = 255;
-      }
-    }
-    const bmp = await createImageBitmap(img);
-    assets.loadFromBitmap('player', bmp);
-  }
+  // Никаких других предзагруженных текстур: пользователь загружает
+  // свои через панель «Ресурсы».
 
   // --- Сцена / проект / редактор ---
   const scene   = new Scene();
@@ -102,6 +96,7 @@ async function main() {
     gravityX: 0,
     gravityY: 980,
     hintsShown: {},
+    assetsScope: null,
   };
   const editor  = new Editor(scene);
   const controller = new EditorController(canvas, camera, editor);
@@ -126,6 +121,12 @@ async function main() {
     };
   }
 
+  function makeScopeId() {
+    return 'p_' +
+      Math.random().toString(36).slice(2, 10) +
+      Date.now().toString(36).slice(-4);
+  }
+
   function applyCanvasSize(w, h) {
     if (canvas.width !== w)   canvas.width = w;
     if (canvas.height !== h)  canvas.height = h;
@@ -142,14 +143,22 @@ async function main() {
     bridge.setGravity(gx, gy);
   }
 
+  // ---- Определяем assetsScope текущего проекта и восстанавливаем ресурсы ----
+  // Если в localStorage уже есть проект — берём его scope. Иначе генерим новый.
+  {
+    const raw = localStorage.getItem('pride.project.v1');
+    let scope = null;
+    if (raw) {
+      try { scope = JSON.parse(raw).assetsScope || null; } catch { /* ignore */ }
+    }
+    if (!scope) scope = makeScopeId();
+    project.assetsScope = scope;
+    await assets.useScope(scope);
+  }
+
   // --- Input ---
   const input = new InputState();
 
-  /**
-   * true, если фокус сейчас в поле ввода, textarea
-   * или в contenteditable-элементе (текст комментария event sheet).
-   * Тогда глобальные обработчики клавиш не должны вмешиваться.
-   */
   function isEditableTarget() {
     const el = document.activeElement;
     if (!el) return false;
@@ -182,10 +191,20 @@ async function main() {
   // --- Inspector / Layers ---
   const inspector = new Inspector(
     document.getElementById('inspector-content'), editor, scene);
-  inspector.setTextures(['player', '__white']);
 
   const layersPanel = new LayersPanel(
     document.getElementById('layers-panel'), editor, scene);
+
+  // --- Assets panel ---
+  const assetsPanel = new AssetsPanel(
+    document.getElementById('assets-panel'),
+    assets, editor, scene
+  );
+  assetsPanel.onChange = () => {
+    inspector.setTextures(assets.listIds());
+    inspector.refresh();
+  };
+  assetsPanel.onChange();
 
   // --- Project settings ---
   const projectSettings = new ProjectSettings(
@@ -260,12 +279,12 @@ async function main() {
     }
   } else {
     scene.add({
-      x: 200, y: 250, width: 64, height: 64, textureId: 'player', name: 'Player',
+      x: 200, y: 250, width: 64, height: 64, textureId: '__white', name: 'Player',
       physics: { enabled: true, type: 'dynamic', shape: 'box',
                  density: 1, friction: 0.5, restitution: 0.2, radius: 32 },
     });
     scene.add({
-      x: 320, y: 250, width: 64, height: 64, textureId: 'player', name: 'Crate',
+      x: 320, y: 250, width: 64, height: 64, textureId: '__white', name: 'Crate',
       physics: { enabled: true, type: 'dynamic', shape: 'box',
                  density: 1, friction: 0.5, restitution: 0.2, radius: 32 },
     });
@@ -421,17 +440,21 @@ async function main() {
   // --- View tabs ---
   const eventSheetView      = document.getElementById('event-sheet-view');
   const projectSettingsView = document.getElementById('project-settings-view');
+  const assetsView          = document.getElementById('assets-view');
 
   const tabs = new Tabs(document.getElementById('view-tabs'), (id) => {
     const isLayout   = id === 'layout';
     const isEvents   = id === 'event-sheet';
+    const isAssets   = id === 'assets';
     const isSettings = id === 'settings';
 
     canvas.hidden              = !isLayout;
     eventSheetView.hidden      = !isEvents;
+    assetsView.hidden          = !isAssets;
     projectSettingsView.hidden = !isSettings;
 
     if (isEvents)   eventSheetPanel.refresh();
+    if (isAssets)   assetsPanel.refresh();
     if (isSettings) projectSettings.refresh();
   });
 
@@ -456,9 +479,14 @@ async function main() {
     if (loadProject(project)) {
       editor.clearSelection();
       if (!project.sheet) project.sheet = defaultEventSheet();
+
+      if (!project.assetsScope) project.assetsScope = makeScopeId();
+      await assets.useScope(project.assetsScope);
+
       eventRuntime.setSheet(project.sheet);
       eventSheetPanel.refresh();
       varsPanel.refresh();
+      assetsPanel.refresh();
 
       applyCanvasSize(project.canvasWidth, project.canvasHeight);
       applyBgColor(project.bgColor);
@@ -495,7 +523,10 @@ async function main() {
     project.bgColor      = '#333333';
     project.gravityX     = fresh.gravityX ?? 0;
     project.gravityY     = fresh.gravityY ?? 980;
-    project.hintsShown   = {};   // новый проект — подсказки покажем заново
+    project.hintsShown   = {};
+    project.assetsScope  = makeScopeId();
+
+    await assets.useScope(project.assetsScope);
 
     applyCanvasSize(project.canvasWidth, project.canvasHeight);
     applyBgColor(project.bgColor);
@@ -542,7 +573,10 @@ async function main() {
       project.bgColor      = loaded.bgColor;
       project.gravityX     = loaded.gravityX;
       project.gravityY     = loaded.gravityY;
-      project.hintsShown   = {};   // открыт другой файл — подсказки заново
+      project.hintsShown   = {};
+      project.assetsScope  = loaded.assetsScope || makeScopeId();
+
+      await assets.useScope(project.assetsScope);
 
       applyCanvasSize(project.canvasWidth, project.canvasHeight);
       applyBgColor(project.bgColor);
@@ -552,6 +586,7 @@ async function main() {
       eventRuntime.setSheet(project.sheet);
       eventSheetPanel.refresh();
       varsPanel.refresh();
+      assetsPanel.refresh();
       projectSettings.refresh();
       editor.clearSelection();
       editor.onChange();
@@ -760,11 +795,14 @@ async function main() {
     inspector.refresh();
     layersPanel.refresh();
     varsPanel.refresh();
+    assetsPanel.refresh();
+    eventSheetPanel.refresh();   // ← пересчёт предупреждений валидации
     scheduleSave();
   };
 
   inspector.refresh();
   layersPanel.refresh();
+  assetsPanel.refresh();
 
   const gridBatch    = new SpriteBatch(renderer.device, renderer.format);
   const spriteBatch  = new SpriteBatch(renderer.device, renderer.format);

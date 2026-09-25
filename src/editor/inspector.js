@@ -1,4 +1,14 @@
 import { icon } from './icons.js';
+import { optionLabel } from './options-i18n.js';
+
+/** Отображаемые имена для системных текстур. Внутри id не меняется. */
+const TEXTURE_LABELS = {
+  '__white': 'По умолчанию',
+};
+
+function textureLabel(id) {
+  return TEXTURE_LABELS[id] || id;
+}
 
 export class Inspector {
   constructor(container, editor, scene) {
@@ -16,7 +26,6 @@ export class Inspector {
     this.container.addEventListener('input', (e) => this._onFieldChange(e));
     this.container.addEventListener('click', (e) => this._onFormClick(e));
     this.container.addEventListener('focusin', (e) => this._onFormFocusIn(e));
-    // blur не всплывает — слушаем в capture-фазе
     this.container.addEventListener('blur', (e) => this._onFormBlur(e), true);
     this.container.addEventListener('keydown', (e) => this._onFormKeydown(e));
   }
@@ -88,19 +97,19 @@ export class Inspector {
     this._numField   (form, 'physRestitution', 'Упругость',  { min: 0, max: 1, step: 0.05 });
     this._numField   (form, 'physRadius',      'Радиус',     { min: 1, step: 1 });
 
+    // Значения остаются английскими, метки берутся из OPTION_LABELS.
     const fillSelect = (sel, values) => {
       sel.innerHTML = '';
       for (const v of values) {
         const o = document.createElement('option');
-        o.value = v; o.textContent = v;
+        o.value = v;
+        o.textContent = optionLabel(v);
         sel.appendChild(o);
       }
     };
     fillSelect(this.fields.physType,  ['static', 'dynamic', 'kinematic']);
     fillSelect(this.fields.physShape, ['box', 'circle']);
 
-    // physType/physShape оставлены активными всегда — они задают сам факт
-    // того, каким будет тело, когда физика включается.
     this._physNumericFields = [
       'physDensity', 'physFriction', 'physRestitution', 'physRadius',
     ];
@@ -193,16 +202,19 @@ export class Inspector {
     const sel = this.fields.textureId;
     const prev = sel.value;
     sel.innerHTML = '';
+
     const none = document.createElement('option');
     none.value = '';
     none.textContent = '— none —';
     sel.appendChild(none);
+
     for (const t of this.textures) {
       const opt = document.createElement('option');
       opt.value = t;
-      opt.textContent = t;
+      opt.textContent = textureLabel(t);
       sel.appendChild(opt);
     }
+
     if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
   }
 
@@ -265,7 +277,6 @@ export class Inspector {
     for (const p of this._physNumericFields) {
       this.fields[p].disabled = disabled;
     }
-    // physRadius активен только при включённой физике и круглой форме.
     this.fields.physRadius.disabled = disabled || ph.shape !== 'circle';
 
     this._renderInstanceVars();
@@ -418,7 +429,6 @@ export class Inspector {
     const input = e.target;
     if (!input || !input.classList) return;
 
-    // ---- instvar name: запоминаем «якорь» для отката ----
     if (input.classList.contains('instvar-name')) {
       const row = input.closest('.inspector-instvar-row');
       if (!row) return;
@@ -427,9 +437,6 @@ export class Inspector {
       return;
     }
 
-    // ---- обычные поля: открываем undo-транзакцию ----
-    // На каждое нажатие клавиши новая запись в историю не нужна —
-    // одна транзакция на всё редактирование поля.
     const prop = input.dataset && input.dataset.prop;
     if (!prop || input.readOnly || input.type === 'checkbox') return;
     if (this.editor.selection.size === 0) return;
@@ -444,7 +451,7 @@ export class Inspector {
     if (input.classList.contains('instvar-name') ||
         input.classList.contains('instvar-value')) {
       e.preventDefault();
-      input.blur();       // blur → commit
+      input.blur();
     }
   }
 
@@ -452,13 +459,11 @@ export class Inspector {
     const input = e.target;
     if (!input || !input.classList) return;
 
-    // ----- instvar: name -----
     if (input.classList.contains('instvar-name')) {
       this._commitInstVarName(input);
       return;
     }
 
-    // ----- instvar: value -----
     if (input.classList.contains('instvar-value')) {
       const v = parseFloat(input.value);
       if (!Number.isFinite(v)) {
@@ -473,7 +478,6 @@ export class Inspector {
       return;
     }
 
-    // ----- обычное поле: закрываем undo-транзакцию -----
     const prop = input.dataset && input.dataset.prop;
     if (!prop) return;
     const h = this.editor.history;
@@ -522,14 +526,12 @@ export class Inspector {
   }
 
   _onFieldChange(e) {
-    // ---- Instance var field? ----
     const instField = e.target.dataset && e.target.dataset.instVarField;
     if (instField && instField !== 'delete') {
       this._onInstVarChange(e);
       return;
     }
 
-    // ---- Обычные поля инспектора ----
     const prop = e.target.dataset && e.target.dataset.prop;
     if (!prop) return;
 
@@ -601,9 +603,6 @@ export class Inspector {
       this.editor.onChange();
     };
 
-    // Чекбоксы — атомарные действия, их сразу пишем в историю.
-    // Текстовые и number-поля уже мутируют объекты через live-input,
-    // а undo-транзакция открыта в focusin и закроется в blur.
     if (isCheckbox) {
       const h = this.editor.history;
       if (h) h.run('Inspector: ' + prop, apply); else apply();
@@ -617,7 +616,6 @@ export class Inspector {
     const row = e.target.closest('.inspector-instvar-row');
     if (!row) return;
 
-    // ---------- name: live-валидация, коммит на blur ----------
     if (field === 'name') {
       const originalName = e.target.dataset.originalName || row.dataset.instVarName;
       const newName = (e.target.value || '').trim();
@@ -632,7 +630,6 @@ export class Inspector {
       return;
     }
 
-    // ---------- value: коммит на каждый ввод ----------
     if (field === 'value') {
       const name = row.dataset.instVarName;
       const n = parseFloat(e.target.value);

@@ -2,13 +2,13 @@ import { registry } from '../engine/events/registry.js';
 import { EventPopover } from './event-popover.js';
 import { Modal } from './modal.js';
 import { icon } from './icons.js';
+import { optionLabel } from './options-i18n.js';
 import {
   EVENT, GROUP, COMMENT,
   kindOf,
   walkEvents, nextId,
   findElement, findParentArray,
 } from '../engine/events/sheet-utils.js';
-import { showHintOnce } from './hints.js';
 
 const KEY_OPTIONS = [
   'Space', 'Enter', 'Escape', 'Tab',
@@ -54,7 +54,6 @@ export class EventSheetPanel {
     container.addEventListener('input',  (e) => this._onInput(e));
     container.addEventListener('change', (e) => this._onChangeEl(e));
     container.addEventListener('keydown', (e) => this._onKeydown(e));
-    // contenteditable blur не всплывает — ловим в capture-фазе
     container.addEventListener('blur', (e) => this._onBlur(e), true);
 
     this._attachDnD();
@@ -92,6 +91,81 @@ export class EventSheetPanel {
       for (const c of (ev.conditions || [])) if (!c.uid) c.uid = counter++;
       for (const a of (ev.actions    || [])) if (!a.uid) a.uid = counter++;
     });
+  }
+
+  // ============================================================
+  // VALIDATION
+  // ============================================================
+
+  /**
+   * Проверяет параметры события.
+   * Возвращает { count, summary: string[], paramMap: Map<key, message> }.
+   *
+   * key = `${kind}:${uid}:${paramId}`, kind = 'cond' | 'action'.
+   */
+  _validateEvent(event) {
+    const paramMap = new Map();
+    const summary = [];
+
+    const checkItems = (items, kind) => {
+      for (const item of items || []) {
+        const def = kind === 'cond'
+          ? registry.conditions.get(item.type)
+          : registry.actions.get(item.type);
+
+        if (!def) {
+          summary.push(`Неизвестный ${kind === 'cond' ? 'условие' : 'действие'}: ${item.type}`);
+          continue;
+        }
+
+        for (const p of (def.params || [])) {
+          const val = item.params?.[p.id];
+          const msg = this._validateParam(p, val, item.params);
+          if (msg) {
+            paramMap.set(`${kind}:${item.uid}:${p.id}`, msg);
+            summary.push(`${def.label || item.type} → ${p.label || p.id}: ${msg}`);
+          }
+        }
+      }
+    };
+
+    checkItems(event.conditions, 'cond');
+    checkItems(event.actions, 'action');
+
+    return { count: summary.length, summary, paramMap };
+  }
+
+  _validateParam(def, val, allParams) {
+    // Пустое значение — валидатор молчит. Проблема «не задано» вне нашей зоны.
+    if (val === undefined || val === null || val === '') return null;
+
+    if (def.type === 'target') {
+      if (val === '*') return null;
+      const exists = this.scene.objects.some((o) => o.name === val);
+      return exists ? null : `Объект «${val}» не найден на сцене`;
+    }
+
+    if (def.type === 'varname') {
+      const vars = this.project.vars || {};
+      const varsInit = this.project.varsInitial || {};
+      const exists = val in vars || val in varsInit;
+      return exists ? null : `Глобальная переменная «${val}» не найдена`;
+    }
+
+    if (def.type === 'instvar') {
+      const target = (allParams && allParams.target) || '*';
+      for (const o of this.scene.objects) {
+        if (target === '*' || o.name === target) {
+          if (o.properties && val in o.properties) return null;
+        }
+      }
+      const who = target === '*'
+        ? 'ни у одного объекта'
+        : `у объекта «${target}»`;
+      return `Переменная «${val}» не найдена ${who}`;
+    }
+
+    return null;
   }
 
   // ============================================================
@@ -136,7 +210,6 @@ export class EventSheetPanel {
 
     const head = document.createElement('div');
     head.className = 'es-group-head';
-    // Сама шапка НЕ draggable — таскать можно только за ручку слева.
     head.innerHTML = `
       <span class="es-element-drag"
         draggable="true"
@@ -225,16 +298,22 @@ export class EventSheetPanel {
     return wrap;
   }
 
-  // ----- event (как было) -----
+  // ----- event -----
 
   _renderEvent(event, depth) {
+    const validation = this._validateEvent(event);
+
     const wrap = document.createElement('div');
     wrap.className = 'es-event' + (event.disabled ? ' disabled' : '');
+    if (validation.count > 0) wrap.classList.add('has-warning');
     wrap.dataset.eventId = event.id;
     wrap.dataset.elementId = event.id;
     wrap.dataset.elementType = 'event';
     wrap.style.marginLeft = (depth * 24) + 'px';
-    // Больше не draggable — таскать только за ручку в шапке.
+
+    const warnIconHtml = validation.count > 0
+      ? `<span class="es-warn" data-tooltip="${this._escapeAttr(validation.summary.join('\n'))}">${icon('alert')}</span>`
+      : '';
 
     const head = document.createElement('div');
     head.className = 'es-head';
@@ -247,6 +326,7 @@ export class EventSheetPanel {
           ${event.disabled ? '' : 'checked'}>
         <span></span>
       </label>
+      ${warnIconHtml}
       <span class="es-event-id">#${event.id}</span>
       <div class="es-head-actions">
         <button class="es-mini" data-action="add-condition" title="Добавить условие" draggable="false">
@@ -274,7 +354,9 @@ export class EventSheetPanel {
     if (!event.conditions || event.conditions.length === 0) {
       condsEl.innerHTML = '<div class="es-section-empty">Перетащите условие сюда</div>';
     } else {
-      for (const c of event.conditions) condsEl.appendChild(this._renderRow('cond', c, event.id));
+      for (const c of event.conditions) {
+        condsEl.appendChild(this._renderRow('cond', c, event.id, validation));
+      }
     }
 
     const actsEl = document.createElement('div');
@@ -284,7 +366,9 @@ export class EventSheetPanel {
     if (!event.actions || event.actions.length === 0) {
       actsEl.innerHTML = '<div class="es-section-empty">Перетащите действие сюда</div>';
     } else {
-      for (const a of event.actions) actsEl.appendChild(this._renderRow('action', a, event.id));
+      for (const a of event.actions) {
+        actsEl.appendChild(this._renderRow('action', a, event.id, validation));
+      }
     }
 
     const body = document.createElement('div');
@@ -307,7 +391,7 @@ export class EventSheetPanel {
     return wrap;
   }
 
-  _renderRow(kind, item, eventId) {
+  _renderRow(kind, item, eventId, validation) {
     const def = kind === 'cond'
       ? registry.conditions.get(item.type)
       : registry.actions.get(item.type);
@@ -321,9 +405,14 @@ export class EventSheetPanel {
     row.draggable = true;
 
     const paramsHtml = def
-      ? def.params.map((p) =>
-          this._renderParam(kind, item.uid, item.type, p, item.params?.[p.id], item.params)
-        ).join('')
+      ? def.params.map((p) => {
+          const key = `${kind}:${item.uid}:${p.id}`;
+          const warnMsg = validation?.paramMap.get(key) || null;
+          return this._renderParam(
+            kind, item.uid, item.type, p,
+            item.params?.[p.id], item.params, warnMsg
+          );
+        }).join('')
       : `<span class="es-param-error">неизвестный тип: ${item.type}</span>`;
 
     row.innerHTML = `
@@ -337,28 +426,32 @@ export class EventSheetPanel {
     return row;
   }
 
-  _renderParam(kind, uid, ownerType, def, value, allParams) {
+  _renderParam(kind, uid, ownerType, def, value, allParams, warnMsg) {
     const val = value !== undefined ? value : def.default;
     const key = `${kind}:${uid}:${def.id}`;
 
+    const cls  = 'es-param' + (warnMsg ? ' invalid' : '');
+    const attr = warnMsg ? ` data-tooltip="${this._escapeAttr(warnMsg)}"` : '';
+
     if (def.type === 'number') {
-      return `<label class="es-param"><span>${def.label}</span>
+      return `<label class="${cls}"${attr}><span>${def.label}</span>
         <input type="number" data-param="${key}" value="${val}"></label>`;
     }
     if (def.type === 'string') {
-      return `<label class="es-param"><span>${def.label}</span>
+      return `<label class="${cls}"${attr}><span>${def.label}</span>
         <input type="text" data-param="${key}" value="${val}"></label>`;
     }
     if (def.type === 'select') {
       const opts = (def.options || []).map((o) =>
-        `<option value="${o}"${o === val ? ' selected' : ''}>${o}</option>`).join('');
-      return `<label class="es-param"><span>${def.label}</span>
+        `<option value="${o}"${o === val ? ' selected' : ''}>${optionLabel(o, def.id)}</option>`
+      ).join('');
+      return `<label class="${cls}"${attr}><span>${def.label}</span>
         <select data-param="${key}">${opts}</select></label>`;
     }
     if (def.type === 'key') {
       const opts = KEY_OPTIONS.map((k) =>
         `<option value="${k}"${k === val ? ' selected' : ''}>${k}</option>`).join('');
-      return `<label class="es-param"><span>${def.label}</span>
+      return `<label class="${cls}"${attr}><span>${def.label}</span>
         <select data-param="${key}">${opts}</select></label>`;
     }
     if (def.type === 'varname') {
@@ -368,7 +461,7 @@ export class EventSheetPanel {
         `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
       const extra = inList ? '' :
         `<option value="${val}" selected>${val} (нет)</option>`;
-      return `<label class="es-param"><span>${def.label}</span>
+      return `<label class="${cls}"${attr}><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
     if (def.type === 'target') {
@@ -381,7 +474,7 @@ export class EventSheetPanel {
       const extra = inList ? '' :
         `<option value="${val}" selected>${val} (нет в сцене)</option>`;
 
-      return `<label class="es-param"><span>${def.label}</span>
+      return `<label class="${cls}"${attr}><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
 
@@ -396,7 +489,7 @@ export class EventSheetPanel {
       const list = [...names].sort();
 
       if (list.length === 0) {
-        return `<label class="es-param"><span>${def.label}</span>
+        return `<label class="${cls}"${attr}><span>${def.label}</span>
           <input type="text" data-param="${key}" value="${val}"></label>`;
       }
 
@@ -405,7 +498,7 @@ export class EventSheetPanel {
         `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
       const extra = inList ? '' :
         `<option value="${val}" selected>${val} (нет в сцене)</option>`;
-      return `<label class="es-param"><span>${def.label}</span>
+      return `<label class="${cls}"${attr}><span>${def.label}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
 
@@ -425,9 +518,7 @@ export class EventSheetPanel {
   _attachDnD() {
     const c = this.container;
 
-    // ---------- dragstart ----------
     c.addEventListener('dragstart', (e) => {
-      // 1) Строка условия/действия — как было.
       const row = e.target.closest('.es-row');
       if (row) {
         e.dataTransfer.effectAllowed = 'move';
@@ -440,7 +531,6 @@ export class EventSheetPanel {
         return;
       }
 
-      // 2) Ручка элемента (event / group / comment).
       const handle = e.target.closest('.es-element-drag');
       if (!handle) return;
 
@@ -452,14 +542,12 @@ export class EventSheetPanel {
       el.classList.add('dragging');
     });
 
-    // ---------- dragend ----------
     c.addEventListener('dragend', () => {
       for (const el of c.querySelectorAll('.dragging'))
         el.classList.remove('dragging');
       this._clearDropHighlight();
     });
 
-    // ---------- dragover ----------
     c.addEventListener('dragover', (e) => {
       const kinds = e.dataTransfer.types;
       const isAdd     = kinds.includes('application/x-es-add');
@@ -467,7 +555,6 @@ export class EventSheetPanel {
       const isElement = kinds.includes('application/x-es-element');
       if (!isAdd && !isRow && !isElement) return;
 
-      // === строка условия/действия или палитра ===
       if (isAdd || isRow) {
         const section = e.target.closest('.es-section');
         if (section) {
@@ -481,14 +568,12 @@ export class EventSheetPanel {
         return;
       }
 
-      // === элемент (event / group / comment) ===
       const draggingId = this._getDraggingId();
       if (draggingId == null) return;
 
       const targetEl  = e.target.closest('[data-element-id]');
       const groupBody = e.target.closest('.es-group-body');
 
-      // Пустое место внутри группы = вставить в конец группы.
       if (!targetEl) {
         if (groupBody) {
           const gId = +groupBody.dataset.groupId;
@@ -518,7 +603,6 @@ export class EventSheetPanel {
 
       const isGroup = targetEl.classList.contains('es-group');
 
-      // Группа: 30% сверху — before, 30% снизу — after, 40% в середине — inside.
       if (isGroup && ratio >= 0.3 && ratio <= 0.7) {
         targetEl.classList.add('drop-inside');
         return;
@@ -528,7 +612,6 @@ export class EventSheetPanel {
       else             targetEl.classList.add('drop-after');
     });
 
-    // ---------- dragleave ----------
     c.addEventListener('dragleave', (e) => {
       const el = e.target.closest(
         '.es-section, .es-event, .es-group, .es-comment'
@@ -539,7 +622,6 @@ export class EventSheetPanel {
       el.classList.remove('drag-over', 'drop-before', 'drop-after', 'drop-inside');
     });
 
-    // ---------- drop ----------
     c.addEventListener('drop', (e) => {
       const kinds = e.dataTransfer.types;
 
@@ -605,7 +687,6 @@ export class EventSheetPanel {
     return el.dataset.elementId ? +el.dataset.elementId : null;
   }
 
-  /** true, если toId находится внутри поддерева fromId. */
   _isDescendant(fromId, toId) {
     const sheet = this._getSheet();
     const fromEl = findElement(sheet, fromId);
@@ -680,13 +761,6 @@ export class EventSheetPanel {
     this.onChange();
   }
 
-  /**
-   * Универсальное перемещение элемента (event / group / comment).
-   *
-   * target = { groupId }                     — в конец children группы
-   * target = { targetId, position: 'before'} — перед элементом
-   * target = { targetId, position: 'after' } — после элемента
-   */
   _moveElement(fromId, target) {
     const sheet = this._getSheet();
     if (!sheet) return;
@@ -709,12 +783,10 @@ export class EventSheetPanel {
       toIdx = target.position === 'before' ? to.idx : to.idx + 1;
     }
 
-    // Запрет на перемещение в свою же позицию.
     if (toArr === from.arr && (toIdx === from.idx || toIdx === from.idx + 1)) return;
 
     const h = this.history;
     const apply = () => {
-      // Повторно находим — на случай, если snapshotFn уже вызван.
       const from2 = findParentArray(sheet, fromId);
       if (!from2) return;
 
@@ -725,7 +797,6 @@ export class EventSheetPanel {
 
       toArr.splice(adjIdx, 0, el);
 
-      // Если переместили внутрь группы — раскрыть её, чтобы результат был виден.
       if (target.groupId != null) {
         const g = findElement(sheet, target.groupId);
         if (g) g.collapsed = false;
@@ -743,7 +814,6 @@ export class EventSheetPanel {
     if (!btn) return;
     const action = btn.dataset.action;
 
-    // --- группа / комментарий: element-scope ---
     const elementEl = btn.closest('[data-element-id]');
     const elementId = elementEl ? +elementEl.dataset.elementId : null;
 
@@ -769,7 +839,6 @@ export class EventSheetPanel {
       }
     }
 
-    // --- событие: прежние действия ---
     const eventEl = btn.closest('.es-event');
     const eventId = eventEl ? +eventEl.dataset.eventId : null;
 
@@ -919,6 +988,65 @@ export class EventSheetPanel {
 
     this._recompile();
     this.onChange();
+
+    // Если параметр — target или instvar, зависимые параметры того же
+    // события могли стать валидными/невалидными. Пере-рендерим.
+    if (paramId === 'target' || paramId === 'var' || paramId === 'name') {
+      this.refresh();
+    } else {
+      // Точечно обновляем предупреждения у события.
+      this._refreshEventValidation(eventId);
+    }
+  }
+
+  /** Точечное обновление визуала предупреждений без полного ре-рендера. */
+  _refreshEventValidation(eventId) {
+    const el = this.container.querySelector(`.es-event[data-event-id="${eventId}"]`);
+    if (!el) return;
+    const event = this._findEvent(eventId);
+    if (!event) return;
+
+    const validation = this._validateEvent(event);
+
+    el.classList.toggle('has-warning', validation.count > 0);
+
+    // Иконка в шапке.
+    const head = el.querySelector('.es-head');
+    if (head) {
+      let warn = head.querySelector('.es-warn');
+      if (validation.count > 0) {
+        if (!warn) {
+          warn = document.createElement('span');
+          warn.className = 'es-warn';
+          const idEl = head.querySelector('.es-event-id');
+          if (idEl) head.insertBefore(warn, idEl);
+          else head.appendChild(warn);
+        }
+        warn.innerHTML = icon('alert');
+        warn.dataset.tooltip = validation.summary.join('\n');
+      } else if (warn) {
+        warn.remove();
+      }
+    }
+
+    // Параметры: обновляем класс/title.
+    for (const label of el.querySelectorAll('.es-param')) {
+      label.classList.remove('invalid');
+      label.removeAttribute('data-tooltip');
+    }
+    for (const [key, msg] of validation.paramMap) {
+      const [kind, uidStr, paramId] = key.split(':');
+      const row = el.querySelector(`.es-row[data-row-kind="${kind}"][data-row-uid="${uidStr}"]`);
+      if (!row) continue;
+      const label = [...row.querySelectorAll('.es-param')].find((l) => {
+        const el2 = l.querySelector(`[data-param="${key}"]`);
+        return !!el2;
+      });
+      if (label) {
+        label.classList.add('invalid');
+        label.dataset.tooltip = msg;
+      }
+    }
   }
 
   // --- event CRUD ---
@@ -951,8 +1079,6 @@ export class EventSheetPanel {
     this.refresh();
     this.onChange();
 
-    // Первый раз, когда у пользователя становится 2 top-level события —
-    // показываем подсказку о том, что порядок влияет на выполнение.
     if (parentEventId == null && parentGroupId == null) {
       this._maybeShowOrderHint();
     }
@@ -962,23 +1088,24 @@ export class EventSheetPanel {
     const sheet = this._getSheet();
     if (!sheet) return;
 
-    // Считаем только top-level события — группы и комментарии не в счёт.
     const count = sheet.events.filter((el) => (el._type || 'event') === 'event').length;
     if (count < 2) return;
 
-    showHintOnce(this.project, 'eventOrder', () => {
-      Modal.alert({
-        title: 'Порядок событий важен',
-        message:
-          'События выполняются сверху вниз — в том порядке, в котором они ' +
-          'находятся в списке.\n\n' +
-          'Это влияет на результат, если события меняют одни и те же ' +
-          'переменные, свойства объектов или срабатывают на одно и то же ' +
-          'условие. Верхнее событие всегда выполняется раньше нижнего.\n\n' +
-          'Меняйте порядок перетаскиванием за ручку ⠿ слева от события, ' +
-          'группы или комментария.\n\n' +
-          'Отключить все подсказки можно во вкладке «Проект» → «Помощь».',
-        okText: 'Понятно',
+    import('./hints.js').then(({ showHintOnce }) => {
+      showHintOnce(this.project, 'eventOrder', () => {
+        Modal.alert({
+          title: 'Порядок событий важен',
+          message:
+            'События выполняются сверху вниз — в том порядке, в котором они ' +
+            'находятся в списке.\n\n' +
+            'Это влияет на результат, если события меняют одни и те же ' +
+            'переменные, свойства объектов или срабатывают на одно и то же ' +
+            'условие. Верхнее событие всегда выполняется раньше нижнего.\n\n' +
+            'Меняйте порядок перетаскиванием за ручку ⠿ слева от события, ' +
+            'группы или комментария.\n\n' +
+            'Отключить все подсказки можно во вкладке «Проект» → «Помощь».',
+          okText: 'Понятно',
+        });
       });
     });
   }

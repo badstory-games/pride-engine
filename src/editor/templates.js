@@ -3,6 +3,9 @@
  *
  * create() возвращает { scene, sheet, varsInitial, gravityX, gravityY }.
  * gravity по умолчанию 980 (вниз) — как в PhysicsBridge.
+ *
+ * Дефолтная текстура объектов — __white (всегда доступна).
+ * Пользователь назначает свои текстуры через панель «Ресурсы».
  */
 
 const DEFAULT_PHYS = {
@@ -32,7 +35,7 @@ const DYNAMIC_OBJ = (over) => ({
   rotation: 0,
   opacity: 1,
   layerId: 'default',
-  textureId: 'player',
+  textureId: '__white',
   visible: true,
   properties: {},
   physics: { ...DEFAULT_PHYS },
@@ -186,7 +189,7 @@ function platformerTemplate() {
 }
 
 // ------------------------------------------------------------
-// Top-down — гравитация выключена.
+// Top-down
 // ------------------------------------------------------------
 
 function topDownTemplate() {

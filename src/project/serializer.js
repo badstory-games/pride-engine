@@ -4,9 +4,10 @@
  * Формат .pride:
  *   [6 байт "PRIDE1"] [1 байт version=1] [gzip-сжатый JSON UTF-8]
  *
- * JSON (version 5):
+ * JSON (version 6):
  *   { version, scene, sheet, varsInitial,
- *     name, canvasWidth, canvasHeight, bgColor, gravityX, gravityY }
+ *     name, canvasWidth, canvasHeight, bgColor,
+ *     gravityX, gravityY, assetsScope }
  */
 
 const MAGIC = 'PRIDE1';
@@ -14,7 +15,7 @@ const CONTAINER_VERSION = 1;
 
 export function packProject(project) {
   return {
-    version: 5,
+    version: 6,
     scene:        project.scene.toJSON(),
     sheet:        project.sheet,
     varsInitial:  project.varsInitial || {},
@@ -24,6 +25,7 @@ export function packProject(project) {
     bgColor:      project.bgColor     || '#333333',
     gravityX:     project.gravityX ?? 0,
     gravityY:     project.gravityY ?? 980,
+    assetsScope:  project.assetsScope || null,
   };
 }
 
@@ -39,6 +41,7 @@ export function unpackProject(data, scene) {
     bgColor:      data.bgColor     || '#333333',
     gravityX:     data.gravityX ?? 0,
     gravityY:     data.gravityY ?? 980,
+    assetsScope:  data.assetsScope || null,
   };
 }
 
