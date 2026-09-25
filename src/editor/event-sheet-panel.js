@@ -482,7 +482,7 @@ export class EventSheetPanel {
         `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
 
       if (!val) {
-        const placeholder = `<option value="" selected>— выберите переменную —</option>`;
+        const placeholder = `<option value="" selected>Выберите переменную</option>`;
         return `<label class="${cls}"${attr}><span>${def.label}</span>
           <select data-param="${key}">${placeholder}${opts}</select></label>`;
       }
@@ -498,8 +498,8 @@ export class EventSheetPanel {
       const list = [...names].sort();
 
       const placeholderText = list.length === 0
-        ? '— нет объектов —'
-        : '— выберите шаблон —';
+        ? 'Нет объектов'
+        : 'Выберите шаблон';
 
       if (!val) {
         const ph = `<option value="" selected>${placeholderText}</option>`;
@@ -541,8 +541,8 @@ export class EventSheetPanel {
       const list = [...names].sort();
 
       const placeholderText = list.length === 0
-        ? '— нет переменных —'
-        : '— выберите переменную —';
+        ? 'Нет переменных'
+        : 'Выберите переменную';
 
       if (!val) {
         const placeholder = `<option value="" selected>${placeholderText}</option>`;

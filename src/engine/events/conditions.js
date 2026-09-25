@@ -32,7 +32,7 @@ export function registerConditions() {
   });
 
   registry.conditions.register('IsKeyDown', {
-    label: 'Клавиша нажата',
+    label: 'При зажатии клавиши',
     category: 'Ввод',
     params: [{ id: 'key', type: 'key', label: 'Клавиша', default: 'Space' }],
     compile: ({ key }) => (ctx) => ctx.input.down.has(key),
