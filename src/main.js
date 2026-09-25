@@ -47,11 +47,16 @@ import { SnapshotsModal } from './editor/snapshots-modal.js';
 import {
   saveSnapshot, loadSnapshotData, applySnapshotToProject,
 } from './project/snapshots.js';
+import { logger } from './editor/logger.js';
+import { LogPanel } from './editor/log-panel.js';
 
 async function main() {
   initIcons();
   initTheme();
   new Tooltip();   // ← глобальный тултип, один экземпляр на весь UI
+
+  // Перехватываем console до всего остального — ранние логи тоже попадут.
+  logger.install();
 
   registerConditions();
   registerActions();
@@ -114,6 +119,9 @@ async function main() {
   const snapshotsModal = new SnapshotsModal();
 
   const perfOverlay = new PerfOverlay(document.getElementById('canvas-wrap'));
+
+  const logPanel = new LogPanel(document.getElementById('log-panel'));
+  document.getElementById('btn-logs').addEventListener('click', () => logPanel.toggle());
 
   // --- Применение настроек проекта ---
 
@@ -368,6 +376,18 @@ async function main() {
     document.getElementById('vars-panel'),
     project
   );
+
+    // --- Автообновление ссылок при переименованиях ---
+  inspector.onObjectRenamed = (oldName, newName) => {
+    eventSheetPanel.renameObjectRefs(oldName, newName);
+  };
+  inspector.onInstVarRenamed = (objName, oldName, newName) => {
+    eventSheetPanel.renameInstanceVarRefs(objName, oldName, newName);
+  };
+  varsPanel.onVarRenamed = (oldName, newName) => {
+    eventSheetPanel.renameGlobalVarRefs(oldName, newName);
+  };
+
   varsPanel.onChange = () => {
     // Переменные используются в параметрах событий (varname).
     // После добавления/переименования/удаления нужно перерисовать
@@ -783,6 +803,7 @@ async function main() {
 
     if (e.code === 'F8') { e.preventDefault(); perfOverlay.toggle(); return; }
     if (e.code === 'F9') { e.preventDefault(); doBenchmark();      return; }
+    if (e.code === 'F10') { e.preventDefault(); logPanel.toggle(); return; }
 
     const inField = isEditableTarget();
 

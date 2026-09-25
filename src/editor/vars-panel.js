@@ -8,6 +8,9 @@ export class VarsPanel {
     this.running = false;
     this.history = null;
 
+    /** Колбэк, устанавливаемый извне. (oldName, newName) => void */
+    this.onVarRenamed = null;
+
     container.innerHTML = `
       <header class="vars-header">
         <h3>Глобальные переменные</h3>
@@ -22,6 +25,39 @@ export class VarsPanel {
     container.addEventListener('click', (e) => this._onClick(e));
     container.addEventListener('input', (e) => this._onInput(e));
     container.addEventListener('change', (e) => this._onInput(e));
+
+    // Enter в полях «Имя» и «Нач.» завершает ввод и снимает фокус.
+    container.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const t = e.target;
+      if (!t || !t.classList) return;
+      if (t.classList.contains('vars-name') ||
+          t.classList.contains('vars-initial')) {
+        e.preventDefault();
+        t.blur();
+      }
+    });
+
+    // Запоминаем исходное имя переменной при фокусе.
+    container.addEventListener('focusin', (e) => {
+      if (e.target.classList && e.target.classList.contains('vars-name')) {
+        if (!e.target.dataset.originalName) {
+          e.target.dataset.originalName = e.target.value;
+        }
+      }
+    });
+
+    // На blur — уведомляем об окончательном переименовании.
+    container.addEventListener('blur', (e) => {
+      if (e.target.classList && e.target.classList.contains('vars-name')) {
+        const original = e.target.dataset.originalName;
+        const current = (e.target.value || '').trim() || 'unnamed';
+        delete e.target.dataset.originalName;
+        if (original && current !== original && this.onVarRenamed) {
+          this.onVarRenamed(original, current);
+        }
+      }
+    }, true);  
   }
 
   setRunning(running) {
@@ -54,16 +90,6 @@ export class VarsPanel {
     const names = Object.keys(initial);
     this.listEl.innerHTML = '';
 
-    const head = document.createElement('div');
-    head.className = 'vars-row vars-row-head';
-    head.innerHTML = `
-      <span title="Имя переменной">Имя</span>
-      <span title="Начальное значение">Нач.</span>
-      <span title="Текущее значение (во время игры)">Тек.</span>
-      <span></span>
-    `;
-    this.listEl.appendChild(head);
-
     if (names.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'vars-empty';
@@ -81,17 +107,21 @@ export class VarsPanel {
       nameInput.type = 'text';
       nameInput.className = 'vars-name';
       nameInput.value = name;
-      nameInput.placeholder = 'имя';
+      nameInput.placeholder = 'имя переменной';
+      nameInput.title = 'Имя переменной';
 
       const initialInput = document.createElement('input');
       initialInput.type = 'number';
       initialInput.className = 'vars-initial';
       initialInput.value = initial[name] ?? 0;
       initialInput.step = 'any';
+      initialInput.placeholder = 'начальное';
+      initialInput.title = 'Начальное значение';
 
       const currentSpan = document.createElement('span');
       currentSpan.className = 'vars-current';
       currentSpan.textContent = current[name] ?? initial[name] ?? 0;
+      currentSpan.title = 'Текущее значение (во время игры)';
 
       const del = document.createElement('button');
       del.className = 'vars-del';

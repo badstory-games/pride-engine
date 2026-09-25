@@ -879,12 +879,23 @@ export class EventSheetPanel {
   }
 
   _onKeydown(e) {
+    if (e.key !== 'Enter') return;
     const el = e.target;
-    if (!el) return;
-    if (e.key === 'Enter' && el.classList) {
-      if (el.classList.contains('es-group-name')) {
-        e.preventDefault(); el.blur();
-      }
+    if (!el || !el.classList) return;
+
+    // Имя группы.
+    if (el.classList.contains('es-group-name')) {
+      e.preventDefault();
+      el.blur();
+      return;
+    }
+
+    // Параметры условий/действий: input и select с data-param.
+    // Комментарии (contenteditable) НЕ трогаем — там Enter создаёт
+    // новую строку, что ожидаемо.
+    if (el.matches && el.matches('input[data-param], select[data-param]')) {
+      e.preventDefault();
+      el.blur();
     }
   }
 
@@ -1371,5 +1382,70 @@ export class EventSheetPanel {
 
   _recompile() {
     if (this.runtime) this.runtime.setSheet(this.project.sheet);
+  }
+
+    // ============================================================
+  // REFERENCE RENAMING
+  // ============================================================
+
+  /**
+   * Переименовывает ссылки в параметрах событий. Используется при
+   * переименовании объектов, глобальных переменных и instvar —
+   * чтобы невалидные ссылки в event sheet обновлялись автоматически.
+   *
+   * @param {string} oldName
+   * @param {string} newName
+   * @param {'target'|'varname'|'instvar'} paramType
+   * @param {(item, paramDef) => boolean} [restrict] — необязательный фильтр.
+   */
+  _renameParamRefs(oldName, newName, paramType, restrict) {
+    const sheet = this._getSheet();
+    if (!sheet || !oldName || !newName || oldName === newName) return;
+
+    let touched = 0;
+
+    const visit = (items, defs) => {
+      for (const item of items || []) {
+        const def = defs.get(item.type);
+        if (!def) continue;
+        for (const p of (def.params || [])) {
+          if (p.type !== paramType) continue;
+          if (!item.params || item.params[p.id] !== oldName) continue;
+          if (restrict && !restrict(item, p)) continue;
+          item.params[p.id] = newName;
+          touched++;
+        }
+      }
+    };
+
+    walkEvents(sheet.events || [], (ev) => {
+      visit(ev.conditions, registry.conditions);
+      visit(ev.actions, registry.actions);
+    });
+
+    if (touched > 0) {
+      this.refresh();
+      this.onChange();
+    }
+  }
+
+  renameObjectRefs(oldName, newName) {
+    this._renameParamRefs(oldName, newName, 'target');
+  }
+
+  renameGlobalVarRefs(oldName, newName) {
+    this._renameParamRefs(oldName, newName, 'varname');
+  }
+
+  /**
+   * Для instvar: обновляем только там, где target совпадает с объектом,
+   * у которого переименовали переменную, либо target = '*' / пусто.
+   * Это защищает от ложных переименований в других объектах.
+   */
+  renameInstanceVarRefs(objName, oldName, newName) {
+    this._renameParamRefs(oldName, newName, 'instvar', (item) => {
+      const t = item.params && item.params.target;
+      return t === objName || t === '*' || t == null || t === '';
+    });
   }
 }

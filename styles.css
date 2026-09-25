@@ -733,7 +733,7 @@ aside h3 {
   inset: 0;
   background: var(--bg-app);
   display: grid;
-  grid-template-columns: 220px 1fr 290px;
+  grid-template-columns: 220px 1fr 340px;
   overflow: hidden;
   z-index: 5;
 }
@@ -1014,26 +1014,20 @@ aside h3 {
 
 .vars-row {
   display: grid;
-  grid-template-columns: 1fr 62px 62px 22px;
-  gap: 4px;
+  grid-template-columns: 1fr 1fr 22px;
+  gap: 4px 6px;
   align-items: center;
-}
-
-.vars-row-head {
-  padding: 0 4px 4px;
+  padding: 6px 4px;
   border-bottom: 1px solid var(--border-soft);
-  margin-bottom: 2px;
 }
-.vars-row-head span {
-  font: 10px system-ui;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--fg-8);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
+.vars-row:last-child { border-bottom: none; }
+
+/* Имя — на всю ширину верхней строки, крестик справа. */
+.vars-row > .vars-name    { grid-column: 1 / 3; grid-row: 1; min-width: 0; }
+.vars-row > .vars-del     { grid-column: 3;    grid-row: 1; }
+/* Начальное и текущее — вторая строка, поровну. */
+.vars-row > .vars-initial { grid-column: 1;    grid-row: 2; min-width: 0; }
+.vars-row > .vars-current { grid-column: 2;    grid-row: 2; min-width: 0; }
 
 .vars-row input {
   background: var(--bg-input);
@@ -2162,3 +2156,172 @@ aside h3 {
   border-color: var(--danger);
 }
 .snapshot-del > .icon { font-size: 14px; }
+
+/* ============================================================
+   LOG PANEL (F10)
+   ============================================================ */
+#log-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 24px;               /* над статус-баром */
+  height: 260px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  font: 11px ui-monospace, monospace;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.35);
+}
+#log-panel[hidden] { display: none; }
+
+.log-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-topbar);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.log-header h3 {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--fg-5);
+  font-family: system-ui;
+}
+.log-search {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  color: var(--fg);
+  padding: 3px 8px;
+  border-radius: 3px;
+  font: 11px system-ui;
+}
+.log-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.log-filters {
+  display: flex;
+  gap: 3px;
+}
+.log-filter {
+  background: transparent;
+  border: 1px solid var(--border-input);
+  color: var(--fg-6);
+  padding: 3px 8px;
+  border-radius: 3px;
+  font: 11px system-ui;
+  cursor: pointer;
+  transition: background 80ms, color 80ms, border-color 80ms;
+}
+.log-filter:hover { color: var(--fg-1); }
+.log-filter.active {
+  background: var(--bg-btn-active);
+  color: var(--fg-strong);
+  border-color: var(--border-strong);
+}
+
+.log-actions {
+  display: flex;
+  gap: 4px;
+}
+.log-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-5);
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 11px system-ui;
+  transition: background 80ms, color 80ms, border-color 80ms;
+}
+.log-btn:hover {
+  color: var(--fg-strong);
+  border-color: var(--border-input);
+  background: var(--bg-btn);
+}
+.log-btn > .icon { font-size: 12px; }
+
+.log-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.log-row {
+  display: grid;
+  grid-template-columns: 92px 40px 1fr;
+  gap: 8px;
+  padding: 3px 10px;
+  align-items: start;
+  cursor: default;
+  border-bottom: 1px solid var(--border-soft);
+}
+.log-row[data-has-stack="1"] { cursor: pointer; }
+.log-row[data-has-stack="1"]:hover { background: var(--bg-btn-active); }
+
+.log-time {
+  color: var(--fg-7);
+  white-space: nowrap;
+}
+.log-level {
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+.log-info  .log-level,
+.log-info  .log-message { color: var(--fg-2); }
+.log-debug .log-level,
+.log-debug .log-message { color: var(--fg-6); }
+.log-warn  .log-level,
+.log-warn  .log-message { color: #e6a540; }
+.log-error .log-level,
+.log-error .log-message { color: var(--danger); }
+
+.log-message {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-stack {
+  grid-column: 3 / 4;
+  display: none;
+  margin: 4px 0 6px;
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  font: 11px/1.4 ui-monospace, monospace;
+  color: var(--fg-5);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+.log-row.expanded .log-stack { display: block; }
+
+.log-footer {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  background: var(--bg-topbar);
+  border-top: 1px solid var(--border);
+  font: 10px ui-monospace, monospace;
+  color: var(--fg-5);
+  text-align: right;
+}
+.log-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--fg-7);
+  font: 12px system-ui;
+  font-style: italic;
+}

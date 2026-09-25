@@ -29,6 +29,10 @@
       <svg class="icon"><use href="#icon-sun"/></svg>
     </button>
 
+    <button id="btn-logs" class="topbtn" title="Логи (F10)" aria-label="Логи">
+      <svg class="icon"><use href="#icon-terminal"/></svg>
+    </button>
+
     <div class="topbar-group">
       <button id="btn-new"  class="topbtn" title="Создать новый проект" aria-label="Новый проект">
         <svg class="icon"><use href="#icon-file-plus"/></svg>
@@ -136,6 +140,9 @@
   </footer>
 </div>
 
+<!-- ---------- ПАНЕЛЬ ЛОГОВ ---------- -->
+<div id="log-panel" hidden></div>
+
 <!-- ---------- МОДАЛКА ГОРЯЧИХ КЛАВИШ ---------- -->
 <div id="shortcuts-modal" class="modal-backdrop" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sc-title">
@@ -215,6 +222,7 @@
           <tr><td><kbd>F1</kbd> / <kbd>?</kbd></td><td>Эта справка</td></tr>
           <tr><td><kbd>F8</kbd></td><td>Оверлей производительности</td></tr>
           <tr><td><kbd>F9</kbd></td><td>Бенчмарк (500–5000 объектов)</td></tr>
+          <tr><td><kbd>F10</kbd></td><td>Панель логов</td></tr>
         </table>
       </section>
     </div>

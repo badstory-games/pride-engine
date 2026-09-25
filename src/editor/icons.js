@@ -113,6 +113,10 @@ const SPRITE = `
     <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
     <line x1="12" y1="17" x2="12.01" y2="17"/>
   </symbol>
+  <symbol id="icon-terminal" viewBox="0 0 24 24">
+    <polyline points="4 17 10 11 4 5"/>
+    <line x1="12" y1="19" x2="20" y2="19"/>
+  </symbol>
   <symbol id="icon-copy" viewBox="0 0 24 24">
     <rect x="9" y="9" width="13" height="13" rx="2"/>
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>

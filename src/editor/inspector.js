@@ -22,6 +22,13 @@ export class Inspector {
     this._texturesSig = '';
     this._instVarsSig = '';
 
+    /** Колбэки, устанавливаемые извне (main.js). */
+    this.onObjectRenamed   = null;   // (oldName, newName) => void
+    this.onInstVarRenamed  = null;   // (objName, oldName, newName) => void
+
+    // Запоминается в focusin для поля «Имя» — используется в blur.
+    this._nameOriginal = null;
+
     this._build();
     this.container.addEventListener('input', (e) => this._onFieldChange(e));
     this.container.addEventListener('click', (e) => this._onFormClick(e));
@@ -440,6 +447,12 @@ export class Inspector {
     const prop = input.dataset && input.dataset.prop;
     if (!prop || input.readOnly || input.type === 'checkbox') return;
     if (this.editor.selection.size === 0) return;
+
+    if (prop === 'name') {
+      const first = this.scene.get([...this.editor.selection][0]);
+      this._nameOriginal = first ? (first.name || 'Object') : null;
+    }
+
     const h = this.editor.history;
     if (h) h.begin('Inspector: ' + prop);
   }
@@ -448,8 +461,19 @@ export class Inspector {
     if (e.key !== 'Enter') return;
     const input = e.target;
     if (!input || !input.classList) return;
+
+    // instvar: name / value
     if (input.classList.contains('instvar-name') ||
         input.classList.contains('instvar-value')) {
+      e.preventDefault();
+      input.blur();
+      return;
+    }
+
+    // Обычные поля инспектора с data-prop: текст, number, select.
+    // Enter → commit через blur. Checkbox и readonly не трогаем.
+    const prop = input.dataset && input.dataset.prop;
+    if (prop && !input.readOnly && input.type !== 'checkbox') {
       e.preventDefault();
       input.blur();
     }
@@ -482,6 +506,16 @@ export class Inspector {
     if (!prop) return;
     const h = this.editor.history;
     if (h) h.commit();
+
+    if (prop === 'name') {
+      const oldName = this._nameOriginal;
+      this._nameOriginal = null;
+      const first = this.scene.get([...this.editor.selection][0]);
+      const newName = first ? (first.name || 'Object') : null;
+      if (oldName && newName && oldName !== newName && this.onObjectRenamed) {
+        this.onObjectRenamed(oldName, newName);
+      }
+    }
   }
 
   _commitInstVarName(input) {
@@ -520,6 +554,12 @@ export class Inspector {
     row.dataset.instVarName = newName;
     input.dataset.originalName = newName;
     input.classList.remove('instvar-name-invalid');
+
+    if (this.onInstVarRenamed) {
+      const first = this.scene.get([...this.editor.selection][0]);
+      const objName = first ? first.name : null;
+      if (objName) this.onInstVarRenamed(objName, originalName, newName);
+    }
 
     this._refreshInstVarsSigQuietly();
     this.editor.onChange();
