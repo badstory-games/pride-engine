@@ -1,0 +1,230 @@
+/* ============================================================
+   EXPORT MODAL
+   ============================================================ */
+
+.export-modal {
+  width: min(580px, 92vw);
+}
+
+.export-modal .modal-box-header h3 {
+  margin: 0 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.export-modal .modal-box-header h3 > .icon {
+  font-size: 16px;
+  color: var(--accent-head);
+}
+
+.export-hint {
+  margin: 0;
+  font: 12px/1.5 system-ui;
+  color: var(--fg-5);
+}
+
+.export-body {
+  padding: 16px 18px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-section {
+  margin: 14px 0 6px;
+  font: 600 10px system-ui;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent-head);
+}
+.export-section:first-child { margin-top: 0; }
+
+/* ---------- Row ---------- */
+
+.export-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 80ms, border-color 80ms;
+}
+.export-row:hover {
+  background: var(--bg-panel-alt);
+  border-color: var(--border-soft);
+}
+.export-row:active {
+  background: var(--bg-btn-active);
+}
+
+/* Стандартный visually-hidden: контрол остаётся в DOM и фокусируемым,
+   но невидим. Клик по label активирует input нативно. */
+.export-row input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.export-radio-mark,
+.export-check-mark {
+  grid-column: 1;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 80ms, border-color 80ms;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+.export-radio-mark { border-radius: 50%; }
+.export-check-mark { border-radius: 3px; }
+
+.export-radio-mark::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  transition: background 80ms;
+}
+.export-check-mark::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  transform: rotate(-45deg) translate(1px, -1px);
+  transition: border-color 80ms;
+}
+
+.export-row input:checked + .export-radio-mark,
+.export-row input:checked + .export-check-mark {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+.export-row input:checked + .export-radio-mark::after {
+  background: var(--accent-on);
+}
+.export-row input:checked + .export-check-mark::after {
+  border-color: var(--accent-on);
+}
+
+.export-row input:focus-visible + .export-radio-mark,
+.export-row input:focus-visible + .export-check-mark {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Text ---------- */
+
+.export-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.export-label {
+  font: 600 13px system-ui;
+  color: var(--fg-strong);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.export-hint-line {
+  font: 11px/1.5 system-ui;
+  color: var(--fg-5);
+}
+
+/* ---------- Badge ---------- */
+
+.export-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  font: 600 9px/1.5 system-ui;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  background: rgba(230, 165, 64, 0.16);
+  color: var(--warn-fg);
+  border: 1px solid var(--warn-fg);
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+/* ---------- Note (warning) ---------- */
+
+.export-note {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(230, 165, 64, 0.08);
+  border-left: 3px solid var(--warn-fg);
+  border-radius: 0 4px 4px 0;
+}
+.export-note[hidden] { display: none; }
+
+.export-note-icon {
+  flex: 0 0 auto;
+  color: var(--warn-fg);
+  font-size: 16px;
+  line-height: 1.25;
+}
+.export-note-icon > .icon {
+  font-size: 16px;
+  vertical-align: 0;
+}
+
+.export-note-text {
+  font: 12px/1.55 system-ui;
+  color: var(--fg-1);
+  min-width: 0;
+}
+.export-note-text strong {
+  color: var(--fg-strong);
+  display: block;
+  margin-bottom: 2px;
+}
+.export-note-text code {
+  display: inline-block;
+  padding: 0 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  font: 11px ui-monospace, monospace;
+  color: var(--accent-head);
+  white-space: nowrap;
+}
+
+/* ---------- Footer tweaks ---------- */
+
+.export-modal .modal-box-footer {
+  padding: 14px 18px 16px;
+}
+
+.export-modal .modal-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.export-modal .modal-btn-primary > .icon {
+  font-size: 13px;
+}

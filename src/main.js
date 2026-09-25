@@ -20,6 +20,7 @@ import { EditorController } from './editor/input.js';
 import { drawOverlay } from './editor/overlay.js';
 import { ShortcutsModal } from './editor/shortcuts-modal.js';
 import { DocsModal } from './editor/docs-modal.js';
+import { ExportModal } from './editor/export-modal.js';
 import { Inspector } from './editor/inspector.js';
 import { LayersPanel } from './editor/layers-panel.js';
 import { Tabs } from './editor/tabs.js';
@@ -39,7 +40,9 @@ import { runBenchmark, formatResults } from './editor/benchmark.js';
 
 import { saveProject, loadProject, clearProject, hasProject } from './project/storage.js';
 import { serializeProject, deserializeProject } from './project/serializer.js';
-import { downloadBytes, downloadText, pickFile, readFileBytes } from './project/file-io.js';
+import {
+  downloadBlob, downloadBytes, downloadText, pickFile, readFileBytes,
+} from './project/file-io.js';
 import { exportWebGame } from './export/exporter.js';
 import { Modal } from './editor/modal.js';
 import { initIcons } from './editor/icons.js';
@@ -57,11 +60,8 @@ import { setHintsSaveCallback } from './editor/hints.js';
 async function main() {
   initIcons();
   initTheme();
-  // Глобальный тултип. Держим ссылку — так экземпляр не выглядит мусором
-  // при чтении кода (сборщик его и так не соберёт из-за слушателей).
   const _tooltip = new Tooltip();
 
-  // Перехватываем console до всего остального — ранние логи тоже попадут.
   logger.install();
 
   registerConditions();
@@ -79,14 +79,11 @@ async function main() {
   camera.y = canvas.height / 2;
   camera.zoom = 1;
 
-  // Renderer реагирует на освобождение GPU-текстур из AssetManager:
-  // удаляет bind-group из внутреннего кэша. Без этого при частой
-  // смене / переименовании ассетов копились бы мёртвые bind groups.
   const assets = new AssetManager(renderer.device, {
     onTextureDisposed: (texture) => renderer.releaseTexture(texture),
   });
 
-  // ---- __white: 1×1 белая текстура. Системная: без blob, не выгружается ----
+  // ---- __white ----
   {
     const img = new ImageData(1, 1);
     img.data.set([255, 255, 255, 255]);
@@ -101,7 +98,6 @@ async function main() {
     assets.setPreviewUrl('__white', c.toDataURL('image/png'));
   }
 
-  // --- Сцена / проект / редактор ---
   const scene   = new Scene();
   const project = {
     scene, sheet: null,
@@ -124,20 +120,18 @@ async function main() {
   const clipboard = new Clipboard();
   const templateModal = new TemplateModal();
   const snapshotsModal = new SnapshotsModal();
+  const exportModal = new ExportModal();
 
   const perfOverlay = new PerfOverlay(document.getElementById('canvas-wrap'));
   const profiler = new Profiler();
   const profilerModal = new ProfilerModal();
 
-  // Профайлер получает каждый кадр через onFrame — точные frame/update/render.
   perfOverlay.onFrame = (f, u, r) => profiler.capture(f, u, r);
   profiler.onProgress = (t, total) => profilerModal.setProgress(t, total);
   profiler.onFinish   = (report) => profilerModal.showReport(report);
 
   const logPanel = new LogPanel(document.getElementById('log-panel'));
   document.getElementById('btn-logs').addEventListener('click', () => logPanel.toggle());
-
-  // --- Применение настроек проекта ---
 
   function hexToRgb01(hex) {
     const clean = String(hex).replace(/^#/, '');
@@ -171,7 +165,6 @@ async function main() {
     bridge.setGravity(gx, gy);
   }
 
-  // --- Input ---
   const input = new InputState();
 
   function isEditableTarget() {
@@ -193,7 +186,6 @@ async function main() {
     input.release(e.code);
   });
 
-  // --- Event runtime ---
   const eventRuntime = new EventRuntime(project.sheet || defaultEventSheet(), (dt) => ({
     world: bridge.world,
     scene,
@@ -205,14 +197,12 @@ async function main() {
     destroyBodyFor: (id)  => bridge.destroyBodyFor(id),
   }));
 
-  // --- Inspector / Layers ---
   const inspector = new Inspector(
     document.getElementById('inspector-content'), editor, scene);
 
   const layersPanel = new LayersPanel(
     document.getElementById('layers-panel'), editor, scene);
 
-  // --- Assets panel ---
   const assetsPanel = new AssetsPanel(
     document.getElementById('assets-panel'),
     assets, editor, scene
@@ -223,7 +213,6 @@ async function main() {
   };
   assetsPanel.onChange();
 
-  // --- Project settings ---
   const projectSettings = new ProjectSettings(
     document.getElementById('project-settings-panel'),
     project,
@@ -237,19 +226,16 @@ async function main() {
     }
   );
 
-  // --- Shortcuts modal ---
   const shortcutsModal = new ShortcutsModal();
   document.getElementById('btn-shortcuts')
     .addEventListener('click', () => shortcutsModal.toggle());
   controller.onToggleShortcuts = () => shortcutsModal.toggle();
   controller.isShortcutsOpen  = () => shortcutsModal.isOpen;
 
-  // --- Docs modal (F2) ---
   const docsModal = new DocsModal();
   document.getElementById('btn-docs')
     .addEventListener('click', () => docsModal.toggle());
 
-  // --- Profiler (F3) ---
   function doProfile() {
     if (profiler.isRecording) return;
     if (profilerModal.isOpen) return;
@@ -264,7 +250,6 @@ async function main() {
   document.getElementById('btn-profiler')
     .addEventListener('click', doProfile);
 
-  // --- Theme toggle ---
   const btnTheme = document.getElementById('btn-theme');
   function refreshThemeIcon() {
     const t = getTheme();
@@ -277,7 +262,6 @@ async function main() {
   });
   refreshThemeIcon();
 
-  // --- Toolbar ---
   const toolButtons = document.querySelectorAll('.tool');
   function refreshToolButtons() {
     toolButtons.forEach((b) => b.classList.toggle('active', b.dataset.tool === editor.tool));
@@ -287,7 +271,6 @@ async function main() {
   });
   refreshToolButtons();
 
-  // --- Save indicator + autosave ---
   const saveIndicator = document.getElementById('save-indicator');
   let saveTimer = 0;
 
@@ -308,11 +291,8 @@ async function main() {
     }, 500);
   }
 
-  // hints.js не знает про storage; после показа новой подсказки
-  // она дергает этот колбэк, чтобы hintsShown попал в autosave.
   setHintsSaveCallback(scheduleSave);
 
-  // --- Первая загрузка ---
   if (hasProject()) {
     if (loadProject(project)) {
       setIndicator('saved', '✓ loaded');
@@ -339,8 +319,6 @@ async function main() {
     setIndicator('saved', '✓ ready');
   }
 
-  // ---- Bootstrap assetsScope и восстанавливаем ресурсы ИЗ УЖЕ ЗАГРУЖЕННОГО
-  //      проекта. Единый источник истины — project.assetsScope.
   if (!project.assetsScope) project.assetsScope = makeScopeId();
   await assets.useScope(project.assetsScope);
 
@@ -349,7 +327,6 @@ async function main() {
   applyGravity(project.gravityX, project.gravityY);
   document.title = `Pride Engine — ${project.name}`;
 
-  // --- Event sheet ---
   if (!project.sheet)       project.sheet       = defaultEventSheet();
   if (!project.vars)        project.vars        = {};
   if (!project.varsInitial) project.varsInitial = { ...project.vars };
@@ -409,7 +386,6 @@ async function main() {
     project
   );
 
-  // --- Автообновление ссылок при переименованиях ---
   inspector.onObjectRenamed = (oldName, newName) => {
     eventSheetPanel.renameObjectRefs(oldName, newName);
   };
@@ -426,10 +402,6 @@ async function main() {
     scheduleSave();
   };
   varsPanel.refresh();
-
-  // ============================================================
-  // Undo / Redo
-  // ============================================================
 
   const btnUndo = document.getElementById('btn-undo');
   const btnRedo = document.getElementById('btn-redo');
@@ -501,7 +473,6 @@ async function main() {
 
   history.init();
 
-  // --- View tabs ---
   const eventSheetView      = document.getElementById('event-sheet-view');
   const projectSettingsView = document.getElementById('project-settings-view');
   const assetsView          = document.getElementById('assets-view');
@@ -522,7 +493,6 @@ async function main() {
     if (isSettings) projectSettings.refresh();
   });
 
-  // --- Topbar: Save / Load / New ---
   document.getElementById('btn-save').addEventListener('click', async () => {
     const defaultName = 'Снимок ' + new Date().toLocaleString();
     const name = await snapshotsModal.promptSave(defaultName);
@@ -620,8 +590,6 @@ async function main() {
     history.init();
   });
 
-  // --- File I/O ---
-
   async function doSavePride() {
     try {
       const bytes = await serializeProject(project);
@@ -681,14 +649,21 @@ async function main() {
   }
 
   async function doExportGame() {
+    const opts = await exportModal.pick();
+    if (!opts) return;   // отмена
+
     setIndicator('dirty', '● exporting…');
     try {
-      const html = await exportWebGame(project, {
+      const { blob, filename } = await exportWebGame(project, {
         title: project.name || 'Pride Game',
         debugDraw: false,
+        debugOverlay: opts.debugOverlay,
+        debugPhysics: opts.debugPhysics,
+        minify:       opts.minify,
+        mode:         opts.mode,
         assetManager: assets,
       });
-      downloadText(html, 'game.html', 'text/html;charset=utf-8');
+      downloadBlob(blob, filename);
       setIndicator('saved', '✓ exported');
     } catch (e) {
       console.error('[export]', e);
@@ -704,10 +679,6 @@ async function main() {
   document.getElementById('btn-save-pride').addEventListener('click', doSavePride);
   document.getElementById('btn-open-pride').addEventListener('click', doOpenPride);
   document.getElementById('btn-export')    .addEventListener('click', doExportGame);
-
-  // ============================================================
-  // Benchmark (F9)
-  // ============================================================
 
   async function doBenchmark() {
     if (bridge.running) {
@@ -761,7 +732,6 @@ async function main() {
     }
   }
 
-  // --- Play / Pause / Stop / Debug ---
   const btnPlay  = document.getElementById('btn-play');
   const btnPause = document.getElementById('btn-pause');
   const btnStop  = document.getElementById('btn-stop');
@@ -772,7 +742,6 @@ async function main() {
   function refreshPlayButtons() {
     btnPlay.classList.toggle('active', bridge.running && !bridge.paused);
     btnPause.classList.toggle('active', bridge.running && bridge.paused);
-    // Danger-акцент имеет смысл, только когда есть что останавливать.
     btnStop.classList.toggle('danger', bridge.running);
     btnStop.disabled  = !bridge.running;
     btnPause.disabled = !bridge.running;
@@ -877,8 +846,6 @@ async function main() {
     layersPanel.refresh();
     varsPanel.refresh();
     assetsPanel.refresh();
-    // refresh() у EventSheetPanel — rAF-дебаунс; при drag editor.onChange
-    // дёргается на каждый mousemove, но DOM пересобирается один раз за кадр.
     eventSheetPanel.refresh();
     scheduleSave();
   };
