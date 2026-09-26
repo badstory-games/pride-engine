@@ -34,6 +34,9 @@ export class EventSheetPanel {
     this.history = null;
 
     this._refreshRaf = null;
+    // [FIX] Дебаунс рекомпиляции runtime: при быстром вводе в числовые
+    // поля перекомпилируем лист не чаще одного раза на кадр.
+    this._recompileRaf = null;
 
     container.innerHTML = `
       <div class="es-toolbar">
@@ -67,6 +70,12 @@ export class EventSheetPanel {
     if (this._refreshRaf != null) {
       cancelAnimationFrame(this._refreshRaf);
       this._refreshRaf = null;
+    }
+    // [FIX] Отменяем отложенную рекомпиляцию, чтобы rAF не сработал
+    // после уничтожения панели.
+    if (this._recompileRaf != null) {
+      cancelAnimationFrame(this._recompileRaf);
+      this._recompileRaf = null;
     }
   }
 
@@ -1123,6 +1132,18 @@ export class EventSheetPanel {
     this._applyParam(sel);
   }
 
+  // [FIX] Рекомпиляция откладывается до следующего кадра, чтобы быстрый
+  // ввод в числовое поле не запускал полный compile() event-рантайма
+  // на каждый keystroke.
+  _scheduleRecompile() {
+    if (this._recompileRaf != null) return;
+    this._recompileRaf = requestAnimationFrame(() => {
+      this._recompileRaf = null;
+      this._recompile();
+      this.onChange();
+    });
+  }
+
   _applyParam(el) {
     const key = el.dataset.param;
     const [kind, uidStr, paramId] = key.split(':');
@@ -1144,10 +1165,21 @@ export class EventSheetPanel {
     item.params = item.params || {};
     item.params[paramId] = rawVal;
 
-    this._recompile();
-    this.onChange();
+    // [FIX] Рекомпиляция — по rAF, не синхронно на каждый keystroke.
+    this._scheduleRecompile();
 
-    if (paramId === 'target' || paramId === 'var' || paramId === 'name') {
+    // [FIX] Полный перерендер списка нужен только когда параметр
+    // влияет на опции других полей в форме (target → instvar).
+    // Для текстовых/числовых параметров (name, seconds, volume и т.п.)
+    // делаем только лёгкую перевалидацию, чтобы не потерять фокус.
+    const def = kind === 'cond'
+      ? registry.conditions.get(item.type)
+      : registry.actions.get(item.type);
+    const paramDef = def && def.params
+      ? def.params.find((p) => p.id === paramId)
+      : null;
+
+    if (paramDef && paramDef.type === 'target') {
       this.refresh();
     } else {
       this._refreshEventValidation(eventId);

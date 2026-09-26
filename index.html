@@ -13,10 +13,6 @@
     } catch (e) {
       document.documentElement.setAttribute('data-theme', 'dark');
     }
-    // Пока редактор не готов — скрываем его целиком. Это убирает
-    // мигание UI между загрузкой страницы и появлением стартового
-    // экрана. Атрибут переключится на "ready", только когда проект
-    // реально открыт.
     document.documentElement.setAttribute('data-app', 'boot');
   })();
 </script>
@@ -28,75 +24,94 @@
 <body>
 <div id="app">
   <header id="topbar">
-    <a class="brand" href="./" aria-label="Pride Engine">
-      <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
-        <path d="M 25 16 V 48 M 25 16 H 33 A 8 8 0 0 1 33 32 H 25"
-              stroke="currentColor" stroke-width="6"
-              stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        <circle cx="25" cy="16" r="5" fill="currentColor"/>
-        <circle cx="25" cy="48" r="5" fill="currentColor"/>
-        <circle cx="43" cy="24" r="5" fill="#e6a540"/>
-      </svg>
-      <span class="brand-text">Pride Engine</span>
-    </a>
+    <div class="topbar-side topbar-left">
+      <a class="brand" href="./" aria-label="Pride Engine">
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+          <path d="M 25 16 V 48 M 25 16 H 33 A 8 8 0 0 1 33 32 H 25"
+                stroke="currentColor" stroke-width="6"
+                stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <circle cx="25" cy="16" r="5" fill="currentColor"/>
+          <circle cx="25" cy="48" r="5" fill="currentColor"/>
+          <circle cx="43" cy="24" r="5" fill="#e6a540"/>
+        </svg>
+        <span class="brand-text">Pride Engine</span>
+      </a>
 
-    <button id="btn-shortcuts" title="Горячие клавиши (F1)" aria-label="Горячие клавиши">
-      <svg class="icon"><use href="#icon-help"/></svg>
-    </button>
+      <div class="topbar-group" role="group" aria-label="Помощь и инструменты">
+        <button id="btn-shortcuts" class="topbtn topbtn-accent"
+                title="Горячие клавиши (F1)" aria-label="Горячие клавиши">
+          <svg class="icon"><use href="#icon-help"/></svg>
+        </button>
+        <button id="btn-docs" class="topbtn"
+                title="Документация (F2)" aria-label="Документация">
+          <svg class="icon"><use href="#icon-book"/></svg>
+        </button>
+        <button id="btn-profiler" class="topbtn"
+                title="Профайлер (F3)" aria-label="Профайлер">
+          <svg class="icon"><use href="#icon-activity"/></svg>
+        </button>
+        <button id="btn-theme" class="topbtn"
+                title="Светлая / тёмная тема" aria-label="Переключить тему">
+          <svg class="icon"><use href="#icon-sun"/></svg>
+        </button>
+        <button id="btn-logs" class="topbtn"
+                title="Логи (F10)" aria-label="Логи">
+          <svg class="icon"><use href="#icon-terminal"/></svg>
+        </button>
+      </div>
 
-    <button id="btn-docs" class="topbtn" title="Документация (F2)" aria-label="Документация">
-      <svg class="icon"><use href="#icon-book"/></svg>
-    </button>
-
-    <button id="btn-profiler" class="topbtn" title="Профайлер (F3)" aria-label="Профайлер">
-      <svg class="icon"><use href="#icon-activity"/></svg>
-    </button>
-
-    <button id="btn-theme" class="topbtn" title="Светлая / тёмная тема" aria-label="Переключить тему">
-      <svg class="icon"><use href="#icon-sun"/></svg>
-    </button>
-
-    <button id="btn-logs" class="topbtn" title="Логи (F10)" aria-label="Логи">
-      <svg class="icon"><use href="#icon-terminal"/></svg>
-    </button>
-
-    <div class="topbar-group">
-      <button id="btn-projects" class="topbtn" title="Менеджер проектов" aria-label="Проекты">
-        <svg class="icon"><use href="#icon-folder-open"/></svg>
-      </button>
-      <button id="btn-new"  class="topbtn" title="Новый проект (из шаблона)" aria-label="Новый проект">
-        <svg class="icon"><use href="#icon-file-plus"/></svg>
-      </button>
-      <button id="btn-save" class="topbtn" title="Сохранить снимок проекта" aria-label="Сохранить снимок">
-        <svg class="icon"><use href="#icon-save"/></svg>
-      </button>
-      <button id="btn-load" class="topbtn" title="Загрузить снимок проекта" aria-label="Загрузить снимок">
-        <svg class="icon"><use href="#icon-upload"/></svg>
-      </button>
+      <div class="topbar-group" role="group" aria-label="Проект">
+        <button id="btn-projects" class="topbtn"
+                title="Менеджер проектов" aria-label="Проекты">
+          <svg class="icon"><use href="#icon-folder-open"/></svg>
+        </button>
+        <button id="btn-new" class="topbtn"
+                title="Новый проект из шаблона" aria-label="Новый проект">
+          <svg class="icon"><use href="#icon-file-plus"/></svg>
+        </button>
+        <button id="btn-save" class="topbtn"
+                title="Сохранить снимок проекта" aria-label="Сохранить снимок">
+          <svg class="icon"><use href="#icon-save"/></svg>
+        </button>
+        <button id="btn-load" class="topbtn"
+                title="Загрузить снимок проекта" aria-label="Загрузить снимок">
+          <svg class="icon"><use href="#icon-upload"/></svg>
+        </button>
+      </div>
     </div>
 
-    <div class="topbar-group">
-      <button id="btn-undo" class="topbtn" title="Отменить (Ctrl+Z)" aria-label="Отменить" disabled>
-        <svg class="icon"><use href="#icon-undo"/></svg>
-      </button>
-      <button id="btn-redo" class="topbtn" title="Повторить (Ctrl+Shift+Z / Ctrl+Y)" aria-label="Повторить" disabled>
-        <svg class="icon"><use href="#icon-redo"/></svg>
-      </button>
-    </div>
+    <div class="topbar-side topbar-right">
+      <div class="topbar-group" role="group" aria-label="История">
+        <button id="btn-undo" class="topbtn"
+                title="Отменить (Ctrl+Z)" aria-label="Отменить" disabled>
+          <svg class="icon"><use href="#icon-undo"/></svg>
+        </button>
+        <button id="btn-redo" class="topbtn"
+                title="Повторить (Ctrl+Shift+Z / Ctrl+Y)" aria-label="Повторить" disabled>
+          <svg class="icon"><use href="#icon-redo"/></svg>
+        </button>
+      </div>
 
-    <div class="topbar-group">
-      <button id="btn-save-pride" class="topbtn" title="Сохранить проект файлом" aria-label="Сохранить проект файлом">
-        <svg class="icon"><use href="#icon-download"/></svg>
-      </button>
-      <button id="btn-open-pride" class="topbtn" title="Открыть проект из файла" aria-label="Открыть проект из файла">
-        <svg class="icon"><use href="#icon-upload"/></svg>
-      </button>
-      <button id="btn-export" class="topbtn" title="Экспорт проекта (Ctrl+E)" aria-label="Экспорт">
-        <svg class="icon"><use href="#icon-package"/></svg>
-      </button>
+      <div class="topbar-group" role="group" aria-label="Файлы">
+        <button id="btn-save-pride" class="topbtn"
+                title="Сохранить проект файлом" aria-label="Сохранить проект файлом">
+          <svg class="icon"><use href="#icon-download"/></svg>
+        </button>
+        <button id="btn-open-pride" class="topbtn"
+                title="Открыть проект из файла" aria-label="Открыть проект из файла">
+          <svg class="icon"><use href="#icon-upload"/></svg>
+        </button>
+        <button id="btn-export" class="topbtn"
+                title="Экспорт проекта (Ctrl+E)" aria-label="Экспорт">
+          <svg class="icon"><use href="#icon-package"/></svg>
+        </button>
+      </div>
     </div>
+  </header>
 
-    <div id="play-controls">
+  <!-- Play-контролы: fixed-слой поверх топбара -->
+  <div id="play-controls-layer">
+    <div id="play-controls" role="group" aria-label="Управление игрой">
       <button id="btn-play"  class="playbtn" title="Играть (F5)" aria-label="Играть">
         <svg class="icon icon-fill"><use href="#icon-play"/></svg>
       </button>
@@ -110,9 +125,24 @@
         <svg class="icon"><use href="#icon-crosshair"/></svg>
       </button>
     </div>
+  </div>
 
-    <span class="stage">Этап 8 — Projects</span>
-  </header>
+  <!--
+    [FIX] Вкладки Сцена / События / Ресурсы / Проект вынесены из
+    #canvas-wrap в отдельный fixed-слой во всю ширину viewport.
+    Раньше left: 50% считался от canvas-wrap, а тот растянут между
+    панелями разной ширины (48px слева и 220px справа) — центр
+    уезжал вправо примерно на 86px. Теперь центр совпадает с
+    центром экрана.
+  -->
+  <div id="view-tabs-layer">
+    <div id="view-tabs">
+      <button class="vtab active" data-tab="layout">Сцена</button>
+      <button class="vtab"        data-tab="event-sheet">События</button>
+      <button class="vtab"        data-tab="assets">Ресурсы</button>
+      <button class="vtab"        data-tab="settings">Проект</button>
+    </div>
+  </div>
 
   <div id="main">
     <aside id="left-panel">
@@ -131,13 +161,6 @@
     </aside>
 
     <div id="canvas-wrap">
-      <div id="view-tabs">
-        <button class="vtab active" data-tab="layout">Сцена</button>
-        <button class="vtab"        data-tab="event-sheet">События</button>
-        <button class="vtab"        data-tab="assets">Ресурсы</button>
-        <button class="vtab"        data-tab="settings">Проект</button>
-      </div>
-
       <canvas id="pride-canvas" width="1024" height="640"></canvas>
       <div id="fps">FPS: --</div>
 

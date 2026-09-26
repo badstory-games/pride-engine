@@ -5,14 +5,21 @@ const HIDDEN_IDS = new Set(['__white']);
 const PREVIEW_SOUND = '__preview__';
 
 /**
- * Панель ресурсов. Две секции:
+ * Панель ресурсов. Две секции — текстуры и звуки — разнесены
+ * по под-вкладкам, чтобы при большом количестве ассетов ничего
+ * не путалось в одном длинном списке.
+ *
  *   - Текстуры — список PNG, rename, delete, preview.
- *   - Звуки    — список аудио, rename, delete, прослушивание, индикатор
- *                фонового декодирования (полоса + счётчик в заголовке).
+ *   - Звуки    — список аудио, rename, delete, прослушивание,
+ *                индикатор фонового декодирования.
+ *
+ * Активная под-вкладка хранится в `_activeTab` (в памяти инстанса),
+ * не переживает перезагрузку страницы. Счётчики на табах
+ * обновляются автоматически при любом изменении ассетов.
  *
  * `audio` — опционально. Если передан AudioManager:
  *   - у звуков появляется кнопка ▶/■ для прослушивания;
- *   - в заголовке секции показывается «N / M», пока идёт декодирование;
+ *   - на табе «Звуки» показывается «N / M», пока идёт декодирование;
  *   - у незаготовых строк — полоса загрузки и disabled ▶.
  */
 export class AssetsPanel {
@@ -27,6 +34,7 @@ export class AssetsPanel {
     this._lastVersion = -1;
     this._previewId   = null;
     this._refreshAudioRaf = null;
+    this._activeTab   = 'image';   // 'image' | 'audio'
 
     this._build();
 
@@ -59,29 +67,33 @@ export class AssetsPanel {
   _build() {
     this.container.innerHTML = `
       <div class="assets-toolbar">
-        <h3>Ресурсы</h3>
+        <div class="assets-tabs" role="tablist">
+          <button type="button" class="assets-tab active"
+                  data-tab="image" role="tab" aria-selected="true">
+            ${icon('image')}<span>Текстуры</span>
+            <span class="assets-tab-count" data-count="image"></span>
+          </button>
+          <button type="button" class="assets-tab"
+                  data-tab="audio" role="tab" aria-selected="false">
+            ${icon('music')}<span>Звуки</span>
+            <span class="assets-tab-count" data-count="audio"></span>
+          </button>
+        </div>
         <div class="assets-toolbar-actions">
-          <button class="topbtn" data-action="upload-image">
+          <button class="topbtn" data-action="upload-image" data-tab-visible="image">
             ${icon('image')}<span>Загрузить PNG</span>
           </button>
-          <button class="topbtn" data-action="upload-audio">
+          <button class="topbtn" data-action="upload-audio" data-tab-visible="audio">
             ${icon('music')}<span>Загрузить звук</span>
           </button>
         </div>
       </div>
 
-      <div class="assets-section">
-        <div class="assets-section-title">
-          <span>Текстуры</span>
-        </div>
+      <div class="assets-section" data-section="image">
         <div class="assets-list" data-kind="image"></div>
       </div>
 
-      <div class="assets-section">
-        <div class="assets-section-title">
-          <span>Звуки</span>
-          <span class="assets-count" data-count="audio"></span>
-        </div>
+      <div class="assets-section" data-section="audio">
         <div class="assets-list" data-kind="audio"></div>
       </div>
 
@@ -104,13 +116,91 @@ export class AssetsPanel {
 
     this.imageInput.addEventListener('change', (e) => this._onImagePick(e));
     this.audioInput.addEventListener('change', (e) => this._onAudioPick(e));
+
+    this._applyTab();
+  }
+
+  // ============================================================
+  // Под-табы
+  // ============================================================
+
+  _setTab(tab) {
+    if (tab !== 'image' && tab !== 'audio') return;
+    if (this._activeTab === tab) return;
+    this._activeTab = tab;
+    this._applyTab();
+  }
+
+  _applyTab() {
+    const tab = this._activeTab;
+
+    // Активный таб в шапке.
+    for (const btn of this.container.querySelectorAll('.assets-tab')) {
+      const isActive = btn.dataset.tab === tab;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    }
+
+    // Секции.
+    for (const sec of this.container.querySelectorAll('.assets-section')) {
+      sec.hidden = sec.dataset.section !== tab;
+    }
+
+    // Кнопки загрузки — только относящиеся к активному табу.
+    for (const btn of this.container.querySelectorAll('[data-tab-visible]')) {
+      btn.hidden = btn.dataset.tabVisible !== tab;
+    }
+
+    // Обновить счётчики (могут быть не в актуальном состоянии).
+    this._updateTabCounters();
+  }
+
+  _updateTabCounters() {
+    // Текстуры — считаем без системных.
+    const imageCount = this.assets
+      ? this.assets.listIds().filter((id) => !HIDDEN_IDS.has(id)).length
+      : 0;
+    this._setTabCount('image', imageCount, false);
+
+    // Звуки — с индикацией pending, если что-то декодируется.
+    const audioIds = this.assets ? this.assets.listAudioIds() : [];
+    let ready = 0;
+    if (this.audio) {
+      for (const id of audioIds) if (this.audio.isReady(id)) ready++;
+    } else {
+      ready = audioIds.length;
+    }
+    const pending = audioIds.length > 0 && ready < audioIds.length;
+    this._setTabCount('audio', audioIds.length, pending, ready);
+  }
+
+  _setTabCount(tab, total, pending, ready = null) {
+    const el = this.container.querySelector(`[data-count="${tab}"]`);
+    if (!el) return;
+
+    if (tab === 'audio' && pending && ready !== null) {
+      el.textContent = `${ready} / ${total}`;
+      el.classList.add('pending');
+    } else if (total > 0) {
+      el.textContent = String(total);
+      el.classList.remove('pending');
+    } else {
+      el.textContent = '';
+      el.classList.remove('pending');
+    }
   }
 
   refresh() {
-    if (this.assets.version === this._lastVersion) return;
+    if (this.assets.version === this._lastVersion) {
+      // Даже если версия не менялась, счётчики могли устареть
+      // (например, аудио декодировался в фоне).
+      this._updateTabCounters();
+      return;
+    }
     this._lastVersion = this.assets.version;
     this._renderImages();
     this._renderAudio();
+    this._updateTabCounters();
   }
 
   /** Обновляет только список звуков — вызывается, когда фоновое
@@ -120,6 +210,7 @@ export class AssetsPanel {
     this._refreshAudioRaf = requestAnimationFrame(() => {
       this._refreshAudioRaf = null;
       this._renderAudio();
+      this._updateTabCounters();
     });
   }
 
@@ -209,32 +300,10 @@ export class AssetsPanel {
       empty.className = 'assets-empty';
       empty.textContent = 'Нет звуков. Нажмите «Загрузить звук».';
       this.audioListEl.appendChild(empty);
-      this._updateAudioCounter(0, 0);
       return;
     }
 
     for (const id of ids) this.audioListEl.appendChild(this._renderAudioRow(id));
-
-    // Счётчик в заголовке.
-    let ready = 0;
-    if (this.audio) {
-      for (const id of ids) if (this.audio.isReady(id)) ready++;
-    } else {
-      ready = ids.length;
-    }
-    this._updateAudioCounter(ready, ids.length);
-  }
-
-  _updateAudioCounter(ready, total) {
-    const el = this.container.querySelector('[data-count="audio"]');
-    if (!el) return;
-    if (total === 0 || ready === total) {
-      el.textContent = '';
-      el.classList.remove('pending');
-    } else {
-      el.textContent = `${ready} / ${total}`;
-      el.classList.add('pending');
-    }
   }
 
   _renderAudioRow(id) {
@@ -304,6 +373,13 @@ export class AssetsPanel {
   // ============================================================
 
   _onClick(e) {
+    // Переключение под-таба.
+    const tabBtn = e.target.closest('.assets-tab');
+    if (tabBtn) {
+      this._setTab(tabBtn.dataset.tab);
+      return;
+    }
+
     if (e.target.closest('[data-action="upload-image"]')) {
       this.imageInput.value = '';
       this.imageInput.click();
@@ -407,7 +483,6 @@ export class AssetsPanel {
         const base = this._fileToId(file.name);
         const id   = this._uniqueAudioId(base);
 
-        // Сохраняем сразу; декодирование — в фоновой очереди.
         await this.assets.loadAudio(id, bytes, file);
 
         if (this.audio) {
@@ -418,8 +493,8 @@ export class AssetsPanel {
       }
     }
 
-    // Форсированная перерисовка — показать «Декодируется…» сразу.
     this._renderAudio();
+    this._updateTabCounters();
   }
 
   // ============================================================
@@ -515,10 +590,6 @@ export class AssetsPanel {
       return;
     }
 
-    // Согласованно переименовываем звук во всех внутренних структурах
-    // AudioManager: готовый буфер, промис/очередь декодирования,
-    // активные проигрывания. Без этого новый id не находил AudioBuffer
-    // и PlaySound(newId) молча ничего не делал.
     if (this.audio) {
       this.audio.rename(oldId, newId);
     }

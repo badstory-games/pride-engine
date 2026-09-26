@@ -210,10 +210,20 @@ async function main() {
     return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable === true;
   }
 
+  // [FIX] Проверка: активный элемент — кнопка или ссылка? На них Space
+  // должен активировать элемент, а не превращаться в игровой ввод.
+  function isButtonLike() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    return tag === 'BUTTON' || tag === 'A';
+  }
+
   window.addEventListener('keydown', (e) => {
     if (isEditableTarget()) return;
     if (e.repeat) return;
-    if (e.code === 'Space') e.preventDefault();
+    // [FIX] Только если фокус не на кнопке/ссылке — перехватываем Space.
+    if (e.code === 'Space' && !isButtonLike()) e.preventDefault();
     input.press(e.code);
   });
   window.addEventListener('keyup', (e) => {
@@ -257,7 +267,14 @@ async function main() {
   };
   assetsPanel.onChange();
 
+  // [FIX] Не перезаписываем audio.onStateChange — AssetsPanel уже
+  // подписался в своём конструкторе через _prevStateChange. Наш
+  // колбэк добавляется поверх, чтобы не сломать ту подписку.
+  const _prevAudioStateChange = audio.onStateChange;
   audio.onStateChange = () => {
+    if (_prevAudioStateChange) {
+      try { _prevAudioStateChange(); } catch {}
+    }
     if (assetsPanel.refreshAudio) assetsPanel.refreshAudio();
   };
 
@@ -551,10 +568,6 @@ async function main() {
     assetsView.hidden          = !isAssets;
     projectSettingsView.hidden = !isSettings;
 
-    // Панель инструментов и инспектор относятся только к работе со
-    // сценой — на остальных вкладках прячем их через inline-стиль.
-    // Inline display гарантированно перебивает любые каскадные правила,
-    // поэтому пустого места не остаётся.
     const sideDisplay = isLayout ? '' : 'none';
     leftPanel.style.display  = sideDisplay;
     rightPanel.style.display = sideDisplay;
