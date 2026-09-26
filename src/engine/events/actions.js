@@ -5,6 +5,18 @@ import {
   forEachMatchingObject,
 } from './helpers.js';
 
+/**
+ * Возвращает числовое значение параметра или defaultValue, если
+ * значение пустое ('', null, undefined) либо не приводится к числу.
+ * Защищает действия от NaN, который иначе утекает в физику, звук
+ * и переменные.
+ */
+function numOr(v, defaultValue) {
+  if (v === '' || v === null || v === undefined) return defaultValue;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : defaultValue;
+}
+
 export function registerActions() {
   // ---------- PHYSICS ----------
   registry.actions.register('ApplyImpulse', {
@@ -17,11 +29,13 @@ export function registerActions() {
       { id: 'iy',     type: 'number', label: 'Импульс Y', default: -800 },
     ],
     compile: ({ target, ix, iy }) => (ctx) => {
+      const ixv = numOr(ix, 0);
+      const iyv = numOr(iy, -800);
       const store = ctx.world.bodies;
       for (let i = 0; i < store.count; i++) {
         if (!bodyMatchesTarget(ctx, i, target)) continue;
-        store.vx[i] += ix * store.invMass[i];
-        store.vy[i] += iy * store.invMass[i];
+        store.vx[i] += ixv * store.invMass[i];
+        store.vy[i] += iyv * store.invMass[i];
       }
     },
   });
@@ -36,11 +50,13 @@ export function registerActions() {
       { id: 'vy',     type: 'number', label: 'VY',     default: 0 },
     ],
     compile: ({ target, vx, vy }) => (ctx) => {
+      const vxv = numOr(vx, 0);
+      const vyv = numOr(vy, 0);
       const store = ctx.world.bodies;
       for (let i = 0; i < store.count; i++) {
         if (!bodyMatchesTarget(ctx, i, target)) continue;
-        store.vx[i] = vx;
-        store.vy[i] = vy;
+        store.vx[i] = vxv;
+        store.vy[i] = vyv;
       }
     },
   });
@@ -56,11 +72,13 @@ export function registerActions() {
       { id: 'y',      type: 'number', label: 'Y',      default: 0 },
     ],
     compile: ({ target, x, y }) => (ctx) => {
+      const xv = numOr(x, 0);
+      const yv = numOr(y, 0);
       const store = ctx.world.bodies;
       for (let i = 0; i < store.count; i++) {
         if (!bodyMatchesTarget(ctx, i, target)) continue;
-        store.x[i] = x;
-        store.y[i] = y;
+        store.x[i] = xv;
+        store.y[i] = yv;
       }
     },
   });
@@ -95,7 +113,7 @@ export function registerActions() {
         min: 0, max: 1, step: 0.05 },
     ],
     compile: ({ target, opacity }) => (ctx) => {
-      const o = Math.max(0, Math.min(1, opacity));
+      const o = Math.max(0, Math.min(1, numOr(opacity, 1)));
       if (!target || target === '*') {
         for (const obj of ctx.scene.objects) obj.opacity = o;
       } else {
@@ -115,7 +133,7 @@ export function registerActions() {
       { id: 'value', type: 'number',  label: 'Значение', default: 1 },
     ],
     compile: ({ name, value }) => (ctx) => {
-      ctx.vars[name] = (ctx.vars[name] ?? 0) + value;
+      ctx.vars[name] = (ctx.vars[name] ?? 0) + numOr(value, 1);
     },
   });
 
@@ -128,7 +146,7 @@ export function registerActions() {
       { id: 'value', type: 'number',  label: 'Значение', default: 0 },
     ],
     compile: ({ name, value }) => (ctx) => {
-      ctx.vars[name] = value;
+      ctx.vars[name] = numOr(value, 0);
     },
   });
 
@@ -143,9 +161,10 @@ export function registerActions() {
       { id: 'value',  type: 'number',  label: 'Значение',   default: 0 },
     ],
     compile: ({ target, var: name, value }) => (ctx) => {
+      const v = numOr(value, 0);
       forEachMatchingObject(ctx, target, (obj) => {
         obj.properties = obj.properties || {};
-        obj.properties[name] = value;
+        obj.properties[name] = v;
       });
     },
   });
@@ -160,9 +179,10 @@ export function registerActions() {
       { id: 'value',  type: 'number',  label: 'Значение',   default: 1 },
     ],
     compile: ({ target, var: name, value }) => (ctx) => {
+      const v = numOr(value, 1);
       forEachMatchingObject(ctx, target, (obj) => {
         obj.properties = obj.properties || {};
-        obj.properties[name] = (obj.properties[name] ?? 0) + value;
+        obj.properties[name] = (obj.properties[name] ?? 0) + v;
       });
     },
   });
@@ -177,9 +197,10 @@ export function registerActions() {
       { id: 'value',  type: 'number',  label: 'Значение',   default: 1 },
     ],
     compile: ({ target, var: name, value }) => (ctx) => {
+      const v = numOr(value, 1);
       forEachMatchingObject(ctx, target, (obj) => {
         obj.properties = obj.properties || {};
-        obj.properties[name] = (obj.properties[name] ?? 0) - value;
+        obj.properties[name] = (obj.properties[name] ?? 0) - v;
       });
     },
   });
@@ -199,7 +220,9 @@ export function registerActions() {
       const template = findSceneObjectByName(ctx, prefab);
       if (!template) return;
 
-      const clone = ctx.scene.spawnFromTemplate(template, x, y);
+      const xv = numOr(x, 0);
+      const yv = numOr(y, 0);
+      const clone = ctx.scene.spawnFromTemplate(template, xv, yv);
       if (!clone) return;
 
       if (ctx.spawnBodyFor) ctx.spawnBodyFor(clone);
@@ -214,8 +237,6 @@ export function registerActions() {
       { id: 'target', type: 'target', label: 'Объект', default: '*' },
     ],
     compile: ({ target }) => (ctx) => {
-      // Собираем id до удаления: remove делает splice,
-      // нельзя мутировать массив во время обхода.
       const ids = [];
       forEachMatchingObject(ctx, target, (obj) => ids.push(obj.id));
 
@@ -223,6 +244,175 @@ export function registerActions() {
         if (ctx.destroyBodyFor) ctx.destroyBodyFor(id);
         ctx.scene.remove(id);
       }
+    },
+  });
+
+  // ---------- TIMERS ----------
+  registry.actions.register('StartTimer', {
+    label: 'Запустить таймер',
+    description: 'Создаёт именованный таймер или перезапускает существующий с нуля. Пока идёт — время копится; можно проверить условием «Таймер: прошло N секунд».',
+    category: 'Таймеры',
+    params: [
+      { id: 'name', type: 'string', label: 'Имя', default: 'timer1' },
+    ],
+    compile: ({ name }) => (ctx) => ctx.timers.start(name),
+  });
+
+  registry.actions.register('StopTimer', {
+    label: 'Остановить таймер',
+    description: 'Приостанавливает таймер. Накопленное время сохраняется — позже можно продолжить через «Продолжить таймер».',
+    category: 'Таймеры',
+    params: [
+      { id: 'name', type: 'string', label: 'Имя', default: 'timer1' },
+    ],
+    compile: ({ name }) => (ctx) => ctx.timers.stop(name),
+  });
+
+  registry.actions.register('ResumeTimer', {
+    label: 'Продолжить таймер',
+    description: 'Возобновляет остановленный таймер с сохранённого значения. Если таймера не существует — создаёт и запускает его с нуля.',
+    category: 'Таймеры',
+    params: [
+      { id: 'name', type: 'string', label: 'Имя', default: 'timer1' },
+    ],
+    compile: ({ name }) => (ctx) => ctx.timers.resume(name),
+  });
+
+  registry.actions.register('ResetTimer', {
+    label: 'Сбросить таймер',
+    description: 'Обнуляет накопленное время таймера. Состояние (запущен / остановлен) не меняется: если таймер шёл — продолжит идти с нуля; если стоял — останется стоять на нуле.',
+    category: 'Таймеры',
+    params: [
+      { id: 'name', type: 'string', label: 'Имя', default: 'timer1' },
+    ],
+    compile: ({ name }) => (ctx) => ctx.timers.reset(name),
+  });
+
+  // ---------- SOUND ----------
+  registry.actions.register('PlaySound', {
+    label: 'Проиграть звук',
+    description: 'Запускает звук. Каждый вызов создаёт независимое проигрывание — один и тот же звук может играть несколько раз одновременно. Для выстрелов и ударов это нормально; для фоновой музыки ставьте «Цикл = true».',
+    category: 'Звук',
+    params: [
+      { id: 'name',   type: 'sound',  label: 'Звук',      default: '' },
+      { id: 'volume', type: 'number', label: 'Громкость', default: 1,
+        min: 0, max: 1, step: 0.05 },
+      { id: 'loop',   type: 'select', label: 'Цикл',      default: 'false',
+        options: ['false', 'true'] },
+      { id: 'pan',    type: 'number', label: 'Панорама',  default: 0,
+        min: -1, max: 1, step: 0.1 },
+      { id: 'pitch',  type: 'number', label: 'Тон',       default: 1,
+        min: 0.1, max: 4, step: 0.1 },
+    ],
+    compile: ({ name, volume, loop, pan, pitch }) => (ctx) => {
+      if (!name || !ctx.audio) return;
+      ctx.audio.play({
+        id: name,
+        name,
+        volume: numOr(volume, 1),
+        loop: loop === 'true' || loop === true,
+        pan: numOr(pan, 0),
+        pitch: numOr(pitch, 1),
+      });
+    },
+  });
+
+  registry.actions.register('StopSound', {
+    label: 'Остановить звук',
+    description: 'Останавливает все активные проигрывания звука с указанным именем. Ручная остановка не считается «завершением» — условие «Звук завершился» не сработает.',
+    category: 'Звук',
+    params: [
+      { id: 'name', type: 'sound', label: 'Звук', default: '' },
+    ],
+    compile: ({ name }) => (ctx) => {
+      if (!name || !ctx.audio) return;
+      ctx.audio.stop(name);
+    },
+  });
+
+  registry.actions.register('StopAllSounds', {
+    label: 'Остановить все звуки',
+    description: 'Мгновенно останавливает всё, что играет. Полезно при переходе на новый экран или в меню. Как и «Остановить звук», не считается завершением.',
+    category: 'Звук',
+    params: [],
+    compile: () => (ctx) => {
+      if (ctx.audio) ctx.audio.stopAll();
+    },
+  });
+
+  registry.actions.register('SetMasterVolume', {
+    label: 'Задать общую громкость',
+    description: 'Управляет громкостью всех звуков сразу. 0 — полная тишина, 1 — номинальная громкость. Хорошо подходит для слайдера в настройках игры.',
+    category: 'Звук',
+    params: [
+      { id: 'volume', type: 'number', label: 'Громкость', default: 1,
+        min: 0, max: 1, step: 0.05 },
+    ],
+    compile: ({ volume }) => (ctx) => {
+      if (!ctx.audio) return;
+      ctx.audio.setMasterVolume(numOr(volume, 1));
+    },
+  });
+
+  registry.actions.register('SetSoundPan', {
+    label: 'Задать панораму звука',
+    description: 'Меняет панораму у всех активных проигрываний звука с таким именем. -1 — только левый канал, 1 — только правый, 0 — по центру. Полезно для позиционного звука.',
+    category: 'Звук',
+    params: [
+      { id: 'name', type: 'sound',  label: 'Звук',     default: '' },
+      { id: 'pan',  type: 'number', label: 'Панорама', default: 0,
+        min: -1, max: 1, step: 0.1 },
+    ],
+    compile: ({ name, pan }) => (ctx) => {
+      if (!name || !ctx.audio) return;
+      ctx.audio.setPan(name, numOr(pan, 0));
+    },
+  });
+
+  registry.actions.register('SetSoundPitch', {
+    label: 'Задать тон звука',
+    description: 'Меняет высоту тона у активных проигрываний. 1 — норма, 0.5 — на октаву ниже, 2 — на октаву выше. Полезно для эффекта замедления времени или случайного питча у выстрелов.',
+    category: 'Звук',
+    params: [
+      { id: 'name',  type: 'sound',  label: 'Звук', default: '' },
+      { id: 'pitch', type: 'number', label: 'Тон',  default: 1,
+        min: 0.1, max: 4, step: 0.1 },
+    ],
+    compile: ({ name, pitch }) => (ctx) => {
+      if (!name || !ctx.audio) return;
+      ctx.audio.setPitch(name, numOr(pitch, 1));
+    },
+  });
+
+  registry.actions.register('FadeInSound', {
+    label: 'Плавно увеличить громкость',
+    description: 'Постепенно поднимает громкость уже играющих проигрываний указанного звука до заданного уровня за N секунд. Не запускает звук заново — работает только с теми проигрываниями, которые уже созданы действием «Проиграть звук». Если звук в этот момент не играет — действие ничего не делает.',
+    category: 'Звук',
+    params: [
+      { id: 'name',     type: 'sound',  label: 'Звук',      default: '' },
+      { id: 'duration', type: 'number', label: 'Секунд',    default: 1,
+        min: 0.05, step: 0.1 },
+      { id: 'volume',   type: 'number', label: 'Громкость', default: 1,
+        min: 0, max: 1, step: 0.05 },
+    ],
+    compile: ({ name, duration, volume }) => (ctx) => {
+      if (!name || !ctx.audio) return;
+      ctx.audio.fadeIn(name, numOr(duration, 1), numOr(volume, 1));
+    },
+  });
+
+  registry.actions.register('FadeOutSound', {
+    label: 'Плавно уменьшить громкость',
+    description: 'Постепенно снижает громкость уже играющих проигрываний указанного звука до нуля за N секунд, после чего останавливает их. Не запускает звук — работает только с активными проигрываниями. Такое затухание не считается «завершением»: условие «Звук завершился» не сработает.',
+    category: 'Звук',
+    params: [
+      { id: 'name',     type: 'sound',  label: 'Звук',   default: '' },
+      { id: 'duration', type: 'number', label: 'Секунд', default: 1,
+        min: 0.05, step: 0.1 },
+    ],
+    compile: ({ name, duration }) => (ctx) => {
+      if (!name || !ctx.audio) return;
+      ctx.audio.fadeOut(name, numOr(duration, 1));
     },
   });
 }

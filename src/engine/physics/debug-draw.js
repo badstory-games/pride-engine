@@ -1,8 +1,8 @@
 import { ShapeType, BodyType } from './body.js';
 
 /**
- * Рисует тела и контакты через SpriteBatch (используется __white).
- * Все цвета — по типу тела; контакты — красные точки.
+ * Рисует тела и контакты через SpriteBatch.
+ * Использует системную текстуру __white через drawColor.
  */
 export function drawPhysicsDebug(batch, world, camera, opts = {}) {
   const store = world.bodies;
@@ -10,7 +10,6 @@ export function drawPhysicsDebug(batch, world, camera, opts = {}) {
 
   const thickness = 2 / camera.zoom;
 
-  // --- Тела ---
   for (let i = 0; i < n; i++) {
     const static_ = store.btype[i] === BodyType.STATIC;
     const r = static_ ? 0.35 : 0.95;
@@ -26,10 +25,8 @@ export function drawPhysicsDebug(batch, world, camera, opts = {}) {
       const x0 = store.x[i] - hw, y0 = store.y[i] - hh;
       const x1 = store.x[i] + hw, y1 = store.y[i] + hh;
 
-      // лёгкая заливка
-      batch.draw(x0, y0, hw * 2, hh * 2, 0, 0, 1, 1, r, g, b, 0.18);
+      batch.drawColor(x0, y0, hw * 2, hh * 2, r, g, b, 0.18);
 
-      // контур
       seg(batch, x0, y0, x1, y0, thickness, r, g, b, a);
       seg(batch, x1, y0, x1, y1, thickness, r, g, b, a);
       seg(batch, x1, y1, x0, y1, thickness, r, g, b, a);
@@ -37,12 +34,11 @@ export function drawPhysicsDebug(batch, world, camera, opts = {}) {
     }
   }
 
-  // --- Контакты ---
   if (opts.drawContacts !== false) {
     const s = 3 / camera.zoom;
     for (let i = 0; i < world.collisions.length; i++) {
       const m = world.collisions[i];
-      batch.draw(m.cx - s, m.cy - s, s * 2, s * 2, 0, 0, 1, 1, 1, 0.2, 0.2, 0.95);
+      batch.drawColor(m.cx - s, m.cy - s, s * 2, s * 2, 1, 0.2, 0.2, 0.95);
     }
   }
 }
@@ -66,5 +62,5 @@ function seg(batch, x1, y1, x2, y2, t, r, g, b, a) {
   const len = Math.hypot(dx, dy);
   if (len < 1e-6) return;
   const ang = Math.atan2(dy, dx);
-  batch.drawRotated((x1 + x2) / 2, (y1 + y2) / 2, len, t, ang, 0, 0, 1, 1, r, g, b, a);
+  batch.drawRotatedColor((x1 + x2) / 2, (y1 + y2) / 2, len, t, ang, r, g, b, a);
 }

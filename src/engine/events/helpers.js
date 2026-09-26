@@ -2,7 +2,7 @@ import { BodyType } from '../physics/body.js';
 
 /**
  * Для ФИЗИЧЕСКИХ ДЕЙСТВИЙ (ApplyImpulse, SetVelocity...).
- *   target = '*' → только DYNAMIC тела (статические отфильтровываются)
+ *   target = '*' → только DYNAMIC тела
  *   target = 'X' → тело с объектом сцены, у которого name === 'X'
  */
 export function bodyMatchesTarget(ctx, bodyIndex, target) {
@@ -14,13 +14,13 @@ export function bodyMatchesTarget(ctx, bodyIndex, target) {
 
   const objId = store.userId[bodyIndex];
   const obj = objId >= 0 ? ctx.scene.get(objId) : null;
-  return !!obj && obj.name === target;
+  return !!obj && !obj._dead && obj.name === target;
 }
 
 /**
  * Для OnCollision.
- *   target = '*' → ЛЮБОЕ тело (dynamic, static, kinematic)
- *   target = 'X' → тело с объектом сцены, у которого name === 'X'
+ *   target = '*' → ЛЮБОЕ тело
+ *   target = 'X' → тело с объектом сцены, name === 'X'
  */
 export function bodyMatchesAny(ctx, bodyIndex, target) {
   const store = ctx.world.bodies;
@@ -29,7 +29,7 @@ export function bodyMatchesAny(ctx, bodyIndex, target) {
 
   const objId = store.userId[bodyIndex];
   const obj = objId >= 0 ? ctx.scene.get(objId) : null;
-  return !!obj && obj.name === target;
+  return !!obj && !obj._dead && obj.name === target;
 }
 
 export function findSceneObjectByBody(ctx, bodyIndex) {
@@ -40,44 +40,48 @@ export function findSceneObjectByBody(ctx, bodyIndex) {
 
 export function findSceneObjectByName(ctx, name) {
   if (!name || name === '*') return null;
-  for (const obj of ctx.scene.objects) {
-    if (obj.name === name) return obj;
+  const objs = ctx.scene.objects;
+  for (let i = 0; i < objs.length; i++) {
+    const o = objs[i];
+    if (!o._dead && o.name === name) return o;
   }
   return null;
 }
 
 /**
  * Обходит все объекты сцены, попадающие под target.
- *   target = '*' → все объекты сцены
- *   target = 'X' → все объекты с name === 'X'
- *
- * Используется в instance-variable действиях, где нам нужно
- * затронуть КАЖДЫЙ инстанс с этим именем (Construct-style picking
- * отсутствует, поэтому оперируем множеством).
+ * Мёртвые (удалённые, но ещё не сжатые) пропускаются.
  */
 export function forEachMatchingObject(ctx, target, fn) {
   const objs = ctx.scene.objects;
   if (!target || target === '*') {
-    for (let i = 0; i < objs.length; i++) fn(objs[i]);
+    for (let i = 0; i < objs.length; i++) {
+      const o = objs[i];
+      if (!o._dead) fn(o);
+    }
     return;
   }
   for (let i = 0; i < objs.length; i++) {
-    if (objs[i].name === target) fn(objs[i]);
+    const o = objs[i];
+    if (!o._dead && o.name === target) fn(o);
   }
 }
 
 /**
- * Возвращает true, если хотя бы один объект под target удовлетворяет
- * предикату fn(obj). Используется в CompareInstanceVar.
+ * Истинно, если хотя бы один объект под target удовлетворяет предикату.
  */
 export function anyMatchingObject(ctx, target, fn) {
   const objs = ctx.scene.objects;
   if (!target || target === '*') {
-    for (let i = 0; i < objs.length; i++) if (fn(objs[i])) return true;
+    for (let i = 0; i < objs.length; i++) {
+      const o = objs[i];
+      if (!o._dead && fn(o)) return true;
+    }
     return false;
   }
   for (let i = 0; i < objs.length; i++) {
-    if (objs[i].name === target && fn(objs[i])) return true;
+    const o = objs[i];
+    if (!o._dead && o.name === target && fn(o)) return true;
   }
   return false;
 }

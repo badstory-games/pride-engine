@@ -1,221 +1,255 @@
+/**
+ * SpriteBatch на инстансинге WebGPU.
+ *
+ * Статический quad (4 вершины, 6 индексов) + instance buffer. Группировка
+ * по страницам атласа: beginGroup(pageIndex) закрывает предыдущую группу
+ * и открывает новую с тем же pageIndex. Все спрайты одной страницы
+ * рисуются одним drawIndexed(6, N, 0, 0, firstInstance).
+ *
+ * Так как обычно всё лежит в одной странице атласа, в норме получается
+ * один draw call на весь батч.
+ *
+ * Instance layout (52 байта):
+ *   offset  0: inst_pos     float32x2   центр спрайта в мире
+ *   offset  8: inst_size    float32x2   ширина, высота
+ *   offset 16: inst_rot     float32     угол в радианах
+ *   offset 20: inst_uv0     float32x2   u0, v0
+ *   offset 28: inst_uv1     float32x2   u1, v1
+ *   offset 36: inst_color   float32x4   r, g, b, a
+ */
 export class SpriteBatch {
-  constructor(device, format, maxVertices = 100_000) {
+  constructor(device, format, maxInstances = 65536) {
     this.device = device;
     this.format = format;
 
-    this.vertexData = null;
-    this.indexData  = null;
-    this.vertexBuffer = null;
-    this.indexBuffer  = null;
+    this.maxInstances = maxInstances;
 
-    this.vertexCount = 0;
-    this.indexCount  = 0;
+    // ---------- Статический quad ----------
+    const quadData = new Float32Array([
+      0, 0,
+      1, 0,
+      1, 1,
+      0, 1,
+    ]);
+    const quadIndices = new Uint32Array([0, 1, 2, 0, 2, 3]);
 
-    /** Группы в текущем кадре: { textureId, vertexOffset, indexOffset, indexCount }. */
+    this.quadVertexBuffer = device.createBuffer({
+      size: quadData.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(this.quadVertexBuffer, 0, quadData);
+
+    this.quadIndexBuffer = device.createBuffer({
+      size: quadIndices.byteLength,
+      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(this.quadIndexBuffer, 0, quadIndices);
+
+    // ---------- Instance buffer ----------
+    this.instanceData = new Float32Array(maxInstances * 13);
+    this.instanceBuffer = device.createBuffer({
+      size: this.instanceData.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+
+    /**
+     * Буферы, ожидающие уничтожения. Старый instance buffer после _grow
+     * нельзя destroy() сразу — GPU-команды предыдущего кадра могли ещё
+     * ссылаться на него. Уничтожаем в начале следующего begin().
+     * @type {GPUBuffer[]}
+     */
+    this._pendingDestroy = [];
+
+    this.instanceCount = 0;
+
+    /** @type {{pageIndex:number, firstInstance:number, instanceCount:number}[]} */
     this.groups = [];
     this._currentGroup = null;
 
-    this._alloc(maxVertices);
+    /**
+     * UV белого пикселя. Устанавливается извне (main.js) после загрузки
+     * AssetManager и используется в drawColor / drawRotatedColor.
+     */
+    this._whiteUV = { u0: 0, v0: 0, u1: 1, v1: 1 };
+  }
+
+  get vertexCount() {
+    return this.instanceCount * 4;
   }
 
   /**
-   * Выделяет CPU-буферы и GPU-буферы под заданную ёмкость.
-   * Вызывается из конструктора и из _grow().
+   * Устанавливает UV-прямоугольник системной текстуры __white.
+   * Обязательно вызывать после инициализации AssetManager, иначе
+   * drawColor будет рисовать «мусор» из левого верхнего угла атласа.
    */
-  _alloc(maxVertices) {
-    this.maxVertices = maxVertices;
-    this.maxIndices  = (maxVertices / 4) * 6;
-
-    this.vertexData = new Float32Array(maxVertices * 8);
-    this.indexData  = new Uint32Array(this.maxIndices);
-
-    // Уничтожаем старые GPU-буферы, если были.
-    if (this.vertexBuffer) this.vertexBuffer.destroy();
-    if (this.indexBuffer)  this.indexBuffer.destroy();
-
-    this.vertexBuffer = this.device.createBuffer({
-      size: this.vertexData.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    this.indexBuffer = this.device.createBuffer({
-      size: this.indexData.byteLength,
-      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-    });
+  setWhiteUV(uv) {
+    if (!uv) return;
+    this._whiteUV = {
+      u0: uv.u0, v0: uv.v0, u1: uv.u1, v1: uv.v1,
+    };
   }
 
-  /**
-   * Удваивает ёмкость. CPU-данные копируются, GPU-буферы пересоздаются.
-   * Вызывается из draw() при переполнении — до flush, поэтому
-   * старые буферы ещё не использовались renderPass'ом и безопасны
-   * для destroy().
-   */
-  _grow() {
-    const newCap = this.maxVertices * 2;
-    const oldVertexData = this.vertexData;
-    const oldIndexData  = this.indexData;
-
-    this.maxVertices = newCap;
-    this.maxIndices  = (newCap / 4) * 6;
-
-    this.vertexData = new Float32Array(newCap * 8);
-    this.indexData  = new Uint32Array(this.maxIndices);
-
-    this.vertexData.set(oldVertexData);
-    this.indexData.set(oldIndexData);
-
-    // Пересоздаём GPU-буферы.
-    this.vertexBuffer.destroy();
-    this.indexBuffer.destroy();
-
-    this.vertexBuffer = this.device.createBuffer({
-      size: this.vertexData.byteLength,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
-    this.indexBuffer = this.device.createBuffer({
-      size: this.indexData.byteLength,
-      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-    });
-  }
+  // ============================================================
+  // Frame lifecycle
+  // ============================================================
 
   begin() {
-    this.vertexCount = 0;
-    this.indexCount = 0;
+    // Уничтожаем буферы, отложенные с прошлого кадра — все submits
+    // предыдущего кадра к этому моменту завершены.
+    if (this._pendingDestroy.length > 0) {
+      for (const buf of this._pendingDestroy) {
+        try { buf.destroy(); } catch { /* ignore */ }
+      }
+      this._pendingDestroy.length = 0;
+    }
+
+    this.instanceCount = 0;
     this.groups.length = 0;
     this._currentGroup = null;
   }
 
-  /**
-   * Открыть новую группу для textureId.
-   * Если текущая группа уже с тем же textureId — ничего не делает,
-   * то есть подряд идущие объекты одной текстуры склеиваются в один draw.
-   */
-  beginGroup(textureId) {
-    if (this._currentGroup && this._currentGroup.textureId === textureId) return;
+  beginGroup(pageIndex) {
+    if (this._currentGroup && this._currentGroup.pageIndex === pageIndex) return;
     if (this._currentGroup) this.endGroup();
     this._currentGroup = {
-      textureId,
-      vertexOffset: this.vertexCount,
-      indexOffset: this.indexCount,
-      indexCount: 0,
+      pageIndex,
+      firstInstance: this.instanceCount,
+      instanceCount: 0,
     };
   }
 
   endGroup() {
     if (!this._currentGroup) return;
-    this._currentGroup.indexCount = this.indexCount - this._currentGroup.indexOffset;
+    this._currentGroup.instanceCount =
+      this.instanceCount - this._currentGroup.firstInstance;
     this.groups.push(this._currentGroup);
     this._currentGroup = null;
   }
 
+  // ============================================================
+  // Draw — с явными UV
+  // ============================================================
+
   draw(x, y, w, h, u0, v0, u1, v1, r = 1, g = 1, b = 1, a = 1) {
-    if (this.vertexCount + 4 > this.maxVertices) this._grow();
-
-    const vd = this.vertexData;
-    let offset = this.vertexCount * 8;
-
-    vd[offset++] = x;     vd[offset++] = y;
-    vd[offset++] = u0;    vd[offset++] = v0;
-    vd[offset++] = r;     vd[offset++] = g; vd[offset++] = b; vd[offset++] = a;
-
-    vd[offset++] = x + w; vd[offset++] = y;
-    vd[offset++] = u1;    vd[offset++] = v0;
-    vd[offset++] = r;     vd[offset++] = g; vd[offset++] = b; vd[offset++] = a;
-
-    vd[offset++] = x + w; vd[offset++] = y + h;
-    vd[offset++] = u1;    vd[offset++] = v1;
-    vd[offset++] = r;     vd[offset++] = g; vd[offset++] = b; vd[offset++] = a;
-
-    vd[offset++] = x;     vd[offset++] = y + h;
-    vd[offset++] = u0;    vd[offset++] = v1;
-    vd[offset++] = r;     vd[offset++] = g; vd[offset++] = b; vd[offset++] = a;
-
-    const base = this.vertexCount;
-    const id = this.indexData;
-    let io = this.indexCount;
-
-    id[io++] = base;     id[io++] = base + 1; id[io++] = base + 2;
-    id[io++] = base;     id[io++] = base + 2; id[io++] = base + 3;
-
-    this.vertexCount += 4;
-    this.indexCount  += 6;
+    this._emit(
+      x + w * 0.5, y + h * 0.5,
+      w, h, 0,
+      u0, v0, u1, v1,
+      r, g, b, a
+    );
   }
 
   drawRotated(cx, cy, w, h, rotation, u0, v0, u1, v1, r = 1, g = 1, b = 1, a = 1) {
-    if (this.vertexCount + 4 > this.maxVertices) this._grow();
+    this._emit(cx, cy, w, h, rotation, u0, v0, u1, v1, r, g, b, a);
+  }
 
-    const hw = w / 2;
-    const hh = h / 2;
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
+  // ============================================================
+  // Draw — цветной прямоугольник через __white
+  // ============================================================
 
-    const lx = [-hw,  hw,  hw, -hw];
-    const ly = [-hh, -hh,  hh,  hh];
+  drawColor(x, y, w, h, r = 1, g = 1, b = 1, a = 1) {
+    const uv = this._whiteUV;
+    this._emit(
+      x + w * 0.5, y + h * 0.5,
+      w, h, 0,
+      uv.u0, uv.v0, uv.u1, uv.v1,
+      r, g, b, a
+    );
+  }
 
-    const vd = this.vertexData;
-    let offset = this.vertexCount * 8;
+  drawRotatedColor(cx, cy, w, h, rotation, r = 1, g = 1, b = 1, a = 1) {
+    const uv = this._whiteUV;
+    this._emit(cx, cy, w, h, rotation, uv.u0, uv.v0, uv.u1, uv.v1, r, g, b, a);
+  }
 
-    for (let i = 0; i < 4; i++) {
-      const wx = cx + lx[i] * cos - ly[i] * sin;
-      const wy = cy + lx[i] * sin + ly[i] * cos;
+  // ============================================================
+  // Internal
+  // ============================================================
 
-      const u = (i === 0 || i === 3) ? u0 : u1;
-      const v = (i < 2) ? v0 : v1;
+  _emit(cx, cy, w, h, rot, u0, v0, u1, v1, r, g, b, a) {
+    if (this.instanceCount + 1 > this.maxInstances) this._grow();
 
-      vd[offset++] = wx; vd[offset++] = wy;
-      vd[offset++] = u;  vd[offset++] = v;
-      vd[offset++] = r;  vd[offset++] = g;
-      vd[offset++] = b;  vd[offset++] = a;
+    const d = this.instanceData;
+    let i = this.instanceCount * 13;
+
+    d[i++] = cx;
+    d[i++] = cy;
+    d[i++] = w;
+    d[i++] = h;
+    d[i++] = rot;
+    d[i++] = u0;
+    d[i++] = v0;
+    d[i++] = u1;
+    d[i++] = v1;
+    d[i++] = r;
+    d[i++] = g;
+    d[i++] = b;
+    d[i++] = a;
+
+    this.instanceCount++;
+  }
+
+  _grow() {
+    const oldMax = this.maxInstances;
+    const newMax = oldMax * 2;
+
+    const oldData = this.instanceData;
+    this.instanceData = new Float32Array(newMax * 13);
+    this.instanceData.set(oldData);
+
+    // НЕ уничтожаем старый буфер сразу — GPU-команды, отправленные
+    // в предыдущем кадре, могут всё ещё ссылаться на него. Откладываем
+    // до следующего begin(), где уничтожение уже безопасно.
+    if (this.instanceBuffer) {
+      this._pendingDestroy.push(this.instanceBuffer);
     }
+    this.instanceBuffer = this.device.createBuffer({
+      size: this.instanceData.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
 
-    const base = this.vertexCount;
-    const id = this.indexData;
-    let io = this.indexCount;
-
-    id[io++] = base;     id[io++] = base + 1; id[io++] = base + 2;
-    id[io++] = base;     id[io++] = base + 2; id[io++] = base + 3;
-
-    this.vertexCount += 4;
-    this.indexCount  += 6;
+    this.maxInstances = newMax;
   }
 
   /**
-   * Один writeBuffer в vertex/index — затем по одному drawIndexed на группу.
-   * binder(textureId) вызывается перед каждой группой, чтобы привязать текстуру.
-   * Если binder не передан (grid/overlay — одна текстура на весь батч),
-   * предполагается, что текстура уже привязана снаружи.
+   * Один writeBuffer на instance data + по одному drawIndexed на группу.
+   *
+   * binder(pageIndex) обязан вернуть true, если он успешно установил
+   * bind group. Если возвращает false — группа пропускается, иначе
+   * WebGPU сгенерирует ошибку «No bind group set at group index 0».
+   * Если binder не возвращает ничего (undefined), считаем, что
+   * bind group уже установлен и можно рисовать — обратная совместимость.
    */
   flush(renderPass, binder = null) {
     if (this._currentGroup) this.endGroup();
-    if (this.indexCount === 0) return;
+    if (this.instanceCount === 0) return;
 
-    // Неявная одна группа, если beginGroup не вызывали вообще
     if (this.groups.length === 0) {
       this.groups.push({
-        textureId: null,
-        vertexOffset: 0,
-        indexOffset: 0,
-        indexCount: this.indexCount,
+        pageIndex: 0,
+        firstInstance: 0,
+        instanceCount: this.instanceCount,
       });
     }
 
     this.device.queue.writeBuffer(
-      this.vertexBuffer, 0,
-      this.vertexData.buffer, 0,
-      this.vertexCount * 8 * 4
+      this.instanceBuffer,
+      0,
+      this.instanceData.buffer,
+      0,
+      this.instanceCount * 13 * 4
     );
 
-    this.device.queue.writeBuffer(
-      this.indexBuffer, 0,
-      this.indexData.buffer, 0,
-      this.indexCount * 4
-    );
-
-    renderPass.setVertexBuffer(0, this.vertexBuffer);
-    renderPass.setIndexBuffer(this.indexBuffer, 'uint32');
+    renderPass.setVertexBuffer(0, this.quadVertexBuffer);
+    renderPass.setVertexBuffer(1, this.instanceBuffer);
+    renderPass.setIndexBuffer(this.quadIndexBuffer, 'uint32');
 
     for (const g of this.groups) {
-      if (binder) binder(g.textureId);
-      renderPass.drawIndexed(g.indexCount, 1, g.indexOffset, 0, 0);
+      if (binder) {
+        const ok = binder(g.pageIndex);
+        if (ok === false) continue;
+      }
+      renderPass.drawIndexed(6, g.instanceCount, 0, 0, g.firstInstance);
     }
   }
 }

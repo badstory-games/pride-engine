@@ -115,4 +115,105 @@ export function registerConditions() {
       });
     },
   });
+
+  // ---------- TIMERS ----------
+
+  registry.conditions.register('EverySeconds', {
+    label: 'Каждые N секунд',
+    description: 'Срабатывает через каждые N секунд работы события. Первое срабатывание — через N секунд после старта игры. Полезно для повторяющихся действий: спавн врагов, тик урона, восстановление ресурсов.',
+    category: 'Таймеры',
+    params: [
+      { id: 'interval', type: 'number', label: 'Интервал (с)', default: 1, min: 0.01, step: 0.1 },
+    ],
+    compile: ({ interval }) => (ctx, slot) => {
+      const iv = Math.max(0.001, interval);
+      if (slot.nextFire === undefined) slot.nextFire = iv;
+      if (ctx.elapsed >= slot.nextFire) {
+        slot.nextFire += iv;
+        return true;
+      }
+      return false;
+    },
+  });
+
+  registry.conditions.register('AfterSeconds', {
+    label: 'Через N секунд',
+    description: 'Срабатывает один раз, когда с момента старта игры прошло N секунд. Для повторного запуска нужно остановить и снова запустить игру.',
+    category: 'Таймеры',
+    params: [
+      { id: 'seconds', type: 'number', label: 'Секунд', default: 1, min: 0, step: 0.1 },
+    ],
+    compile: ({ seconds }) => (ctx, slot) => {
+      if (slot.fired) return false;
+      if (ctx.elapsed >= seconds) {
+        slot.fired = true;
+        return true;
+      }
+      return false;
+    },
+  });
+
+  registry.conditions.register('AfterFrames', {
+    label: 'Через N кадров',
+    description: 'Срабатывает один раз, когда с момента старта игры прошло N кадров. Один кадр = один тик физики, обычно 1/60 секунды. Полезно для коротких задержек без привязки к реальному времени.',
+    category: 'Таймеры',
+    params: [
+      { id: 'frames', type: 'number', label: 'Кадров', default: 60, min: 1, step: 1 },
+    ],
+    compile: ({ frames }) => (ctx, slot) => {
+      if (slot.fired) return false;
+      slot.counter = (slot.counter || 0) + 1;
+      if (slot.counter >= frames) {
+        slot.fired = true;
+        return true;
+      }
+      return false;
+    },
+  });
+
+  registry.conditions.register('TimerElapsed', {
+    label: 'Таймер: прошло N секунд',
+    description: 'Истинно, если именованный таймер накопил не меньше N секунд. Таймер создаётся и запускается действием «Запустить таймер». Пока идёт — время копится; когда остановлен — стоит на месте.',
+    category: 'Таймеры',
+    params: [
+      { id: 'name',    type: 'string', label: 'Имя',     default: 'timer1' },
+      { id: 'seconds', type: 'number', label: 'Секунд',  default: 1, min: 0, step: 0.1 },
+    ],
+    compile: ({ name, seconds }) => (ctx) => {
+      return ctx.timers.getElapsed(name) >= seconds;
+    },
+  });
+
+  // ---------- SOUND ----------
+
+  registry.conditions.register('IsSoundPlaying', {
+    label: 'Звук играет',
+    description: 'Истинно, если хотя бы одно проигрывание звука с таким именем активно прямо сейчас. Для зацикленного звука остаётся истинным, пока его не остановят. Для обычного — пока не доиграет.',
+    category: 'Звук',
+    params: [
+      { id: 'name', type: 'sound', label: 'Звук', default: '' },
+    ],
+    compile: ({ name }) => (ctx) => {
+      if (!name || !ctx.audio) return false;
+      return ctx.audio.isPlaying(name);
+    },
+  });
+
+  registry.conditions.register('OnSoundEnded', {
+    label: 'Звук завершился',
+    description: 'Срабатывает один раз, когда звук доиграл до конца естественно. Ручная остановка и fade out завершением не считаются. Если звук играет несколько раз параллельно — событие сработает один раз на каждый завершившийся экземпляр.',
+    category: 'Звук',
+    params: [
+      { id: 'name', type: 'sound', label: 'Звук', default: '' },
+    ],
+    compile: ({ name }) => (ctx) => {
+      if (!name) return false;
+      const ended = ctx.endedSounds;
+      if (!ended || ended.length === 0) return false;
+      for (let i = 0; i < ended.length; i++) {
+        if (ended[i] === name) return true;
+      }
+      return false;
+    },
+  });
 }

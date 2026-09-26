@@ -4,16 +4,51 @@ import { icon } from './icons.js';
  * Модалка настроек экспорта.
  *
  *   const opts = await exportModal.pick();
- *   if (!opts) return;   // пользователь отменил
- *   // opts: { mode, minify, debugOverlay, debugPhysics }
+ *   if (!opts) return;
+ *   // opts: { mode, minify, showSplash, debugOverlay, debugPhysics }
  *
- * Значения запоминаются между открытиями (в этом экземпляре),
- * чтобы не сбрасывать настройки при повторном экспорте.
+ * Настройки сохраняются в localStorage — переживают перезагрузку вкладки.
+ * Ключ версионирован.
  *
- * Каждый пункт — <label> вокруг <input>. Переключение полностью
- * нативное: браузер сам связывает клик по label с input. Никаких
- * программных click() — это ломало бы выбор двойным срабатыванием.
+ * Каждый пункт — <label> вокруг <input>. Переключение полностью нативное.
  */
+
+const STORAGE_KEY = 'pride.export.options.v1';
+
+const DEFAULT_STATE = {
+  mode: 'single',
+  minify: false,
+  showSplash: true,
+  debugOverlay: true,
+  debugPhysics: false,
+};
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_STATE };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return { ...DEFAULT_STATE };
+
+    const mode = parsed.mode === 'folder' ? 'folder' : 'single';
+    return {
+      mode,
+      minify:       !!parsed.minify,
+      showSplash:   parsed.showSplash !== false,
+      debugOverlay: parsed.debugOverlay !== false,
+      debugPhysics: !!parsed.debugPhysics,
+    };
+  } catch {
+    return { ...DEFAULT_STATE };
+  }
+}
+
+function saveState(state) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {}
+}
+
 export class ExportModal {
   constructor() {
     this._el = null;
@@ -22,12 +57,7 @@ export class ExportModal {
     this._bodyEl = null;
     this._noteEl = null;
 
-    this._state = {
-      mode: 'single',       // 'single' | 'folder'
-      minify: false,
-      debugOverlay: true,   // счётчик FPS в углу
-      debugPhysics: false,  // контуры тел
-    };
+    this._state = loadState();
   }
 
   pick() {
@@ -49,7 +79,6 @@ export class ExportModal {
     const box = document.createElement('div');
     box.className = 'modal-box export-modal';
 
-    // ---------- Header ----------
     const header = document.createElement('div');
     header.className = 'modal-box-header';
     header.innerHTML = `
@@ -61,7 +90,6 @@ export class ExportModal {
     `;
     box.appendChild(header);
 
-    // ---------- Body ----------
     const body = document.createElement('div');
     body.className = 'modal-box-body export-body';
     box.appendChild(body);
@@ -81,13 +109,21 @@ export class ExportModal {
       'нужен сервер'
     ));
 
-    // Опции
-    body.appendChild(this._section('Опции'));
+    // Опции сборки
+    body.appendChild(this._section('Сборка'));
     body.appendChild(this._checkRow(
       'minify',
       'Сжать модули',
       'Убирает комментарии и пустые строки. На работу не влияет.'
     ));
+    body.appendChild(this._checkRow(
+      'showSplash',
+      'Splash-экран при запуске',
+      'Анимированный логотип, пока игра грузится. Исчезает через 0.8 сек.'
+    ));
+
+    // Отладка
+    body.appendChild(this._section('Отладка'));
     body.appendChild(this._checkRow(
       'debugOverlay',
       'Показывать FPS в игре',
@@ -99,7 +135,7 @@ export class ExportModal {
       'Debug draw: контуры тел и точки контактов. Обычно выключено.'
     ));
 
-    // ---------- Warning note (только для folder) ----------
+    // Предупреждение для folder
     this._noteEl = document.createElement('div');
     this._noteEl.className = 'export-note';
     this._noteEl.hidden = true;
@@ -119,7 +155,6 @@ export class ExportModal {
     `;
     body.appendChild(this._noteEl);
 
-    // ---------- Footer ----------
     const footer = document.createElement('div');
     footer.className = 'modal-box-footer';
     footer.innerHTML = `
@@ -135,13 +170,10 @@ export class ExportModal {
 
     this._el = backdrop;
 
-    // ---------- Events ----------
     backdrop.addEventListener('mousedown', (e) => {
       if (e.target === backdrop) this._close(null);
     });
 
-    // Один-единственный обработчик change — фиксирует новое состояние.
-    // Переключение делает сам браузер через <label> обёртку.
     body.addEventListener('change', (e) => {
       const el = e.target;
       if (el.name === 'mode') {
@@ -150,6 +182,7 @@ export class ExportModal {
       } else if (el.dataset.opt) {
         this._state[el.dataset.opt] = !!el.checked;
       }
+      saveState(this._state);
     });
 
     footer.querySelector('[data-action="cancel"]')
@@ -157,7 +190,6 @@ export class ExportModal {
     footer.querySelector('[data-action="ok"]')
       .addEventListener('click', () => this._close({ ...this._state }));
 
-    // Стартовое состояние предупреждения.
     this._updateNote();
 
     requestAnimationFrame(() => {
@@ -166,15 +198,10 @@ export class ExportModal {
     });
   }
 
-  /** Показывает предупреждение только для формата «папка». */
   _updateNote() {
     if (!this._noteEl) return;
     this._noteEl.hidden = this._state.mode !== 'folder';
   }
-
-  // ============================================================
-  // Row builders
-  // ============================================================
 
   _section(title) {
     const el = document.createElement('div');
@@ -187,9 +214,7 @@ export class ExportModal {
     const row = document.createElement('label');
     row.className = 'export-row export-row-radio';
     const checked = this._state[name] === value ? 'checked' : '';
-    const badgeHtml = badge
-      ? `<span class="export-badge">${badge}</span>`
-      : '';
+    const badgeHtml = badge ? `<span class="export-badge">${badge}</span>` : '';
     row.innerHTML = `
       <input type="radio" name="${name}" value="${value}" ${checked}>
       <span class="export-radio-mark"></span>
@@ -215,10 +240,6 @@ export class ExportModal {
     `;
     return row;
   }
-
-  // ============================================================
-  // Close
-  // ============================================================
 
   _onKey(e) {
     if (e.key === 'Escape') {

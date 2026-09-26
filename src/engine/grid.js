@@ -14,9 +14,9 @@ export function drawGrid(batch, camera, W, H, gridSize = 32) {
   const r = 1, g = 1, b = 1, a = 0.07;
 
   for (let x = startX; x <= maxX; x += gridSize) {
-    batch.draw(x, minY, thickness, maxY - minY, 0, 0, 1, 1, r, g, b, a);
+    batch.drawColor(x, minY, thickness, maxY - minY, r, g, b, a);
   }
   for (let y = startY; y <= maxY; y += gridSize) {
-    batch.draw(minX, y, maxX - minX, thickness, 0, 0, 1, 1, r, g, b, a);
+    batch.drawColor(minX, y, maxX - minX, thickness, r, g, b, a);
   }
 }

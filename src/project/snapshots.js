@@ -1,21 +1,42 @@
 /**
  * Именованные снимки проекта.
  *
- * Хранятся в localStorage отдельно от autosave-слота.
- * Структура:
- *   pride.snapshots.index  — массив { id, name, ts, meta }
- *   pride.snapshot.<id>    — { id, name, ts, data, meta }
+ * Изолированы по проекту:
+ *   pride.snapshots.<projectId>.index  — метаданные
+ *   pride.snapshot.<projectId>.<snapId> — сами данные
  *
- * Autosave (pride.project.v1) никогда сюда не пишет и снимки не трогает.
+ * Autosave в `pride.project.<id>` снимки не трогает.
+ *
+ * currentProjectId устанавливается через setCurrentProject(id).
  */
 
-const INDEX_KEY = 'pride.snapshots.index';
-const SNAP_KEY  = (id) => `pride.snapshot.${id}`;
+let currentProjectId = null;
+
+export function setCurrentProject(id) {
+  currentProjectId = id || null;
+}
+
+export function getCurrentProject() {
+  return currentProjectId;
+}
+
+const indexKey = (pid) => `pride.snapshots.${pid}.index`;
+const snapKey  = (pid, sid) => `pride.snapshot.${pid}.${sid}`;
+
+function needProject() {
+  if (!currentProjectId) {
+    console.warn('[snapshots] no current project set');
+    return false;
+  }
+  return true;
+}
 
 /** Список метаданных, отсортированный от новых к старым. */
-export function listSnapshots() {
+export function listSnapshots(projectId = null) {
+  const pid = projectId || currentProjectId;
+  if (!pid) return [];
   try {
-    const raw = localStorage.getItem(INDEX_KEY);
+    const raw = localStorage.getItem(indexKey(pid));
     if (!raw) return [];
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
@@ -25,9 +46,9 @@ export function listSnapshots() {
   }
 }
 
-function writeIndex(list) {
+function writeIndex(pid, list) {
   try {
-    localStorage.setItem(INDEX_KEY, JSON.stringify(list));
+    localStorage.setItem(indexKey(pid), JSON.stringify(list));
   } catch (e) {
     console.error('[snapshots] writeIndex failed:', e);
   }
@@ -65,8 +86,16 @@ function countEvents(sheet) {
 }
 
 export function saveSnapshot(project, name) {
-  const id = 'snap_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
-  const ts = Date.now();
+  if (!project || !project.id) {
+    throw new Error('[snapshots] save: project.id required');
+  }
+  if (!needProject()) throw new Error('No current project');
+
+  project.scene.flush();
+
+  const pid = project.id;
+  const id  = 'snap_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+  const ts  = Date.now();
   const data = packSnapshotData(project);
   const meta = {
     objectCount: project.scene.objects.length,
@@ -75,21 +104,23 @@ export function saveSnapshot(project, name) {
   };
 
   try {
-    localStorage.setItem(SNAP_KEY(id), JSON.stringify({ id, name, ts, data, meta }));
+    localStorage.setItem(snapKey(pid, id), JSON.stringify({ id, name, ts, data, meta }));
   } catch (e) {
     console.error('[snapshots] save failed:', e);
     throw e;
   }
 
-  const list = listSnapshots();
+  const list = listSnapshots(pid);
   list.unshift({ id, name, ts, meta });
-  writeIndex(list);
+  writeIndex(pid, list);
   return id;
 }
 
-export function loadSnapshotData(id) {
+export function loadSnapshotData(id, projectId = null) {
+  const pid = projectId || currentProjectId;
+  if (!pid) return null;
   try {
-    const raw = localStorage.getItem(SNAP_KEY(id));
+    const raw = localStorage.getItem(snapKey(pid, id));
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
@@ -97,10 +128,6 @@ export function loadSnapshotData(id) {
   }
 }
 
-/**
- * Применяет снимок к объекту project. Scene перезаписывается через
- * scene.fromJSON. Возвращает true при успехе.
- */
 export function applySnapshotToProject(snapshot, project) {
   const d = snapshot && snapshot.data;
   if (!d) return false;
@@ -120,8 +147,20 @@ export function applySnapshotToProject(snapshot, project) {
   return true;
 }
 
-export function deleteSnapshot(id) {
-  try { localStorage.removeItem(SNAP_KEY(id)); } catch { /* ignore */ }
-  const list = listSnapshots().filter((s) => s.id !== id);
-  writeIndex(list);
+export function deleteSnapshot(id, projectId = null) {
+  const pid = projectId || currentProjectId;
+  if (!pid) return;
+  try { localStorage.removeItem(snapKey(pid, id)); } catch { /* ignore */ }
+  const list = listSnapshots(pid).filter((s) => s.id !== id);
+  writeIndex(pid, list);
+}
+
+/** Удаляет все снимки проекта (при удалении проекта). */
+export function deleteAllSnapshots(projectId) {
+  if (!projectId) return;
+  const list = listSnapshots(projectId);
+  for (const s of list) {
+    try { localStorage.removeItem(snapKey(projectId, s.id)); } catch { /* ignore */ }
+  }
+  try { localStorage.removeItem(indexKey(projectId)); } catch { /* ignore */ }
 }

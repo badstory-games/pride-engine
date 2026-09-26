@@ -1,22 +1,18 @@
 import { hintsEnabled, setHintsEnabled } from './hints.js';
+import { projectIconHtml } from './project-icons.js';
 
 /**
  * Панель настроек проекта.
  *
  * Поля:
- *   - Имя проекта (строка, метаданные)
- *   - Размер канваса (ширина, высота) → применяется к <canvas>
- *   - Цвет фона → clearValue в renderer
- *   - Гравитация X, Y → PhysicsBridge.setGravity
- *   - Чекбокс «Показывать подсказки» — глобальная настройка пользователя,
- *     не часть проекта, хранится в localStorage.
+ *   - Имя проекта
+ *   - Иконка проекта (превью + кнопки «Сменить» / «Сбросить»)
+ *   - Размер канваса
+ *   - Цвет фона
+ *   - Гравитация X / Y
+ *   - Чекбокс «Показывать подсказки» — глобальная настройка
  *
- * Все изменения проекта проходят через history:
- *   - текстовые/number — транзакция открывается на ПЕРВОМ input
- *     и закрывается на blur (a не на focus/blur — чтобы простой клик
- *     по полю не делал structuredClone сцены);
- *   - color — snapshot на change (после того, как пользователь закрыл пикер);
- *   - чекбокс подсказок — отдельно, без history.
+ * Смена иконки делегируется наружу через onRequestIconPick.
  */
 export class ProjectSettings {
   constructor(container, project, opts = {}) {
@@ -25,13 +21,19 @@ export class ProjectSettings {
     this.onChange = () => {};
     this.history = null;
 
-    this.onCanvasSizeChange      = opts.onCanvasSizeChange      || (() => {});
-    this.onGravityChange         = opts.onGravityChange         || (() => {});
-    this.onBgColorChange         = opts.onBgColorChange         || (() => {});
-    this.onNameChange            = opts.onNameChange            || (() => {});
-    this.onHintsEnabledChange    = opts.onHintsEnabledChange    || (() => {});
+    this.onCanvasSizeChange   = opts.onCanvasSizeChange   || (() => {});
+    this.onGravityChange      = opts.onGravityChange      || (() => {});
+    this.onBgColorChange      = opts.onBgColorChange      || (() => {});
+    this.onNameChange         = opts.onNameChange         || (() => {});
+    this.onHintsEnabledChange = opts.onHintsEnabledChange || (() => {});
+
+    /** @type {(() => Promise<void>)|null} */
+    this.onRequestIconPick = null;
 
     this.fields = {};
+    this._iconPreviewEl = null;
+    this._iconResetBtn = null;
+
     this._build();
   }
 
@@ -43,6 +45,7 @@ export class ProjectSettings {
 
     this._section(form, 'Общие');
     this._textField(form, 'name', 'Имя проекта');
+    this._iconField(form);
 
     this._section(form, 'Канвас');
     this._numField(form, 'canvasWidth',  'Ширина',    { min: 64, step: 1 });
@@ -61,6 +64,7 @@ export class ProjectSettings {
     this.container.addEventListener('input',   (e) => this._onInput(e));
     this.container.addEventListener('change',  (e) => this._onChange(e));
     this.container.addEventListener('blur',    (e) => this._onBlur(e), true);
+    this.container.addEventListener('click',   (e) => this._onClick(e));
 
     this.container.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -129,6 +133,64 @@ export class ProjectSettings {
     this.fields[prop] = row.querySelector('input');
   }
 
+  _iconField(parent) {
+    const row = document.createElement('div');
+    row.className = 'ps-icon-field';
+
+    const lbl = document.createElement('div');
+    lbl.className = 'ps-icon-field-label';
+    lbl.textContent = 'Иконка';
+    row.appendChild(lbl);
+
+    const inner = document.createElement('div');
+    inner.className = 'ps-icon-row';
+
+    const preview = document.createElement('div');
+    preview.className = 'ps-icon-preview';
+    preview.dataset.iconPreview = '1';
+    inner.appendChild(preview);
+    this._iconPreviewEl = preview;
+
+    const actions = document.createElement('div');
+    actions.className = 'ps-icon-actions';
+
+    const changeBtn = document.createElement('button');
+    changeBtn.type = 'button';
+    changeBtn.className = 'topbtn';
+    changeBtn.dataset.action = 'icon-change';
+    changeBtn.innerHTML = '<span>Сменить…</span>';
+    actions.appendChild(changeBtn);
+
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'topbtn';
+    resetBtn.dataset.action = 'icon-reset';
+    resetBtn.innerHTML = '<span>Сбросить</span>';
+    actions.appendChild(resetBtn);
+    this._iconResetBtn = resetBtn;
+
+    inner.appendChild(actions);
+    row.appendChild(inner);
+
+    parent.appendChild(row);
+    this._syncIconPreview();
+  }
+
+  _syncIconPreview() {
+    if (!this._iconPreviewEl) return;
+
+    const dataUrl = this.project ? this.project.icon : null;
+    this._iconPreviewEl.innerHTML = projectIconHtml(dataUrl);
+
+    if (this._iconResetBtn) {
+      const hasCustom = typeof dataUrl === 'string' && dataUrl.startsWith('data:');
+      this._iconResetBtn.disabled = !hasCustom;
+      this._iconResetBtn.title = hasCustom
+        ? 'Вернуть стандартную иконку'
+        : 'Иконка уже стандартная';
+    }
+  }
+
   refresh() {
     const p = this.project;
     const active = document.activeElement;
@@ -149,11 +211,36 @@ export class ProjectSettings {
     if (activeProp !== 'hintsEnabled') {
       this.fields.hintsEnabled.checked = hintsEnabled();
     }
+
+    this._syncIconPreview();
   }
 
   // ============================================================
   // events
   // ============================================================
+
+  _onClick(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+
+    if (action === 'icon-change') {
+      if (this.onRequestIconPick) this.onRequestIconPick();
+      return;
+    }
+    if (action === 'icon-reset') {
+      const hasCustom = typeof this.project.icon === 'string'
+        && this.project.icon.startsWith('data:');
+      if (!hasCustom) return;
+
+      const h = this.history;
+      const apply = () => { this.project.icon = null; };
+      if (h) h.run('Project: icon', apply); else apply();
+
+      this._syncIconPreview();
+      this.onChange();
+    }
+  }
 
   _onBlur(e) {
     const prop = e.target.dataset && e.target.dataset.prop;
@@ -168,7 +255,6 @@ export class ProjectSettings {
     const prop = e.target.dataset && e.target.dataset.prop;
     if (!prop) return;
 
-    // Подсказки — глобальная настройка, не пишется в project и историю.
     if (prop === 'hintsEnabled') {
       const enabled = !!e.target.checked;
       setHintsEnabled(enabled);
@@ -176,14 +262,11 @@ export class ProjectSettings {
       return;
     }
 
-    // Color picker: применяем значение по input, но транзакцию
-    // открываем через snapshot() в _onChange — когда пикер закрылся.
     if (e.target.type === 'color') {
       this._apply(prop, e.target.value);
       return;
     }
 
-    // Текст/number: открываем транзакцию на первом изменении.
     const h = this.history;
     if (h) h.begin('Project: ' + prop);
 

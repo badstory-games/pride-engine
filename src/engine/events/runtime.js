@@ -1,10 +1,24 @@
 import { registry } from './registry.js';
 
+/**
+ * EventRuntime — компилирует event sheet в массив функций и
+ * выполняет его каждый тик.
+ *
+ * Каждое условие получает персистентный `slot` — объект, который
+ * живёт между кадрами и хранит состояние условия (например,
+ * таймер «каждые N секунд» пишет туда nextFire). Slot сбрасывается
+ * в reset() — при Play / Stop.
+ *
+ * `elapsed` — накопленное время симуляции в секундах. Растёт только
+ * когда игра не на паузе: тик вызывается из update, который сам
+ * пропускает паузу. Детерминированно, не зависит от performance.now().
+ */
 export class EventRuntime {
   constructor(sheet, ctxFactory) {
     this.sheet = sheet;
     this.ctxFactory = ctxFactory;
     this.program = [];
+    this._elapsed = 0;
     this.compile();
   }
 
@@ -57,6 +71,7 @@ export class EventRuntime {
           type: c.type,
           fn: def.compile(c.params || {}),
           once: !!def.once,
+          slot: {},
         });
         node._once.push(false);
       } catch (e) {
@@ -80,7 +95,9 @@ export class EventRuntime {
 
   tick(dt) {
     if (!this.program.length) return;
+    this._elapsed += dt;
     const ctx = this.ctxFactory(dt);
+    ctx.elapsed = this._elapsed;
     for (const node of this.program) this._run(node, ctx);
   }
 
@@ -91,7 +108,7 @@ export class EventRuntime {
     for (let i = 0; i < node.conditions.length; i++) {
       const c = node.conditions[i];
       if (c.once) continue;
-      if (!c.fn(ctx)) { pass = false; break; }
+      if (!c.fn(ctx, c.slot)) { pass = false; break; }
     }
 
     if (!pass) {
@@ -114,11 +131,15 @@ export class EventRuntime {
   }
 
   reset() {
-    for (const node of this.program) this._resetOnce(node);
+    this._elapsed = 0;
+    for (const node of this.program) this._resetNode(node);
   }
 
-  _resetOnce(node) {
+  _resetNode(node) {
     for (let i = 0; i < node._once.length; i++) node._once[i] = false;
-    for (const c of node.children) this._resetOnce(c);
+    for (let i = 0; i < node.conditions.length; i++) {
+      node.conditions[i].slot = {};
+    }
+    for (const c of node.children) this._resetNode(c);
   }
 }

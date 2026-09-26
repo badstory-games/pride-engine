@@ -47,14 +47,29 @@ export class Renderer {
       vertex: {
         module: shaderModule,
         entryPoint: 'vs_main',
-        buffers: [{
-          arrayStride: 8 * 4,
-          attributes: [
-            { shaderLocation: 0, offset: 0,  format: 'float32x2' },
-            { shaderLocation: 1, offset: 8,  format: 'float32x2' },
-            { shaderLocation: 2, offset: 16, format: 'float32x4' },
-          ],
-        }],
+        buffers: [
+          // Слот 0 — статический quad: только corner, шаг «по вершине».
+          {
+            arrayStride: 8,
+            stepMode: 'vertex',
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x2' },  // corner
+            ],
+          },
+          // Слот 1 — инстанс-данные: шаг «по инстансу», 52 байта.
+          {
+            arrayStride: 52,
+            stepMode: 'instance',
+            attributes: [
+              { shaderLocation: 1, offset: 0,  format: 'float32x2' },  // inst_pos
+              { shaderLocation: 2, offset: 8,  format: 'float32x2' },  // inst_size
+              { shaderLocation: 3, offset: 16, format: 'float32'   },  // inst_rot
+              { shaderLocation: 4, offset: 20, format: 'float32x2' },  // inst_uv0
+              { shaderLocation: 5, offset: 28, format: 'float32x2' },  // inst_uv1
+              { shaderLocation: 6, offset: 36, format: 'float32x4' },  // inst_color
+            ],
+          },
+        ],
       },
       fragment: {
         module: shaderModule,
@@ -104,9 +119,6 @@ export class Renderer {
    * Освобождает bind-group, привязанный к текстуре. Вызывается извне
    * (AssetManager → onTextureDisposed) в момент, когда текстура
    * уже не используется и будет уничтожена.
-   *
-   * Если удаляемая текстура — текущая (this.texture), сбрасываем
-   * и указатель, чтобы следующий setTexture() пересоздал bindGroup.
    */
   releaseTexture(texture) {
     if (!texture) return;
@@ -117,15 +129,10 @@ export class Renderer {
     }
   }
 
-  // Матрица проекции пишется извне через camera.writeMatrix(m, W, H),
-  // затем вызывающий код сам делает writeBuffer. Renderer её не трогает.
-
   setTexture(texture, sampler) {
     this.texture = texture;
     this.sampler = sampler || this.sampler;
 
-    // Один bind group на текстуру за всё время жизни рендерера.
-    // uniformBuffer стабилен, sampler стабилен, view текстуры стабилен.
     let bg = this._bindGroupCache.get(texture);
     if (!bg) {
       bg = this.device.createBindGroup({
@@ -176,9 +183,16 @@ struct Uniforms {
 @group(0) @binding(2) var tex: texture_2d<f32>;
 
 struct VertexInput {
-  @location(0) position: vec2<f32>,
-  @location(1) uv: vec2<f32>,
-  @location(2) color: vec4<f32>,
+  // Статический quad: corner ∈ {0,1}².
+  @location(0) corner: vec2<f32>,
+
+  // Per-instance данные.
+  @location(1) inst_pos:   vec2<f32>,
+  @location(2) inst_size:  vec2<f32>,
+  @location(3) inst_rot:   f32,
+  @location(4) inst_uv0:   vec2<f32>,
+  @location(5) inst_uv1:   vec2<f32>,
+  @location(6) inst_color: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -190,9 +204,27 @@ struct VertexOutput {
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
   var output: VertexOutput;
-  output.position = uniforms.projection * vec4<f32>(input.position, 0.0, 1.0);
-  output.uv = input.uv;
-  output.color = input.color;
+
+  // corner: (0,0)..(1,1) → локальные координаты (-0.5..0.5)
+  let local = input.corner - vec2<f32>(0.5, 0.5);
+
+  // Масштаб на размер инстанса.
+  let scaled = local * input.inst_size;
+
+  // Поворот вокруг центра.
+  let c = cos(input.inst_rot);
+  let s = sin(input.inst_rot);
+  let rotated = vec2<f32>(
+    scaled.x * c - scaled.y * s,
+    scaled.x * s + scaled.y * c
+  );
+
+  // Сдвиг в мировую позицию центра.
+  let world = input.inst_pos + rotated;
+
+  output.position = uniforms.projection * vec4<f32>(world, 0.0, 1.0);
+  output.uv = mix(input.inst_uv0, input.inst_uv1, input.corner);
+  output.color = input.inst_color;
   return output;
 }
 

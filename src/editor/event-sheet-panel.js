@@ -22,11 +22,12 @@ const KEY_OPTIONS = [
 const COMMENT_COLORS = ['yellow', 'green', 'blue', 'red', 'gray'];
 
 export class EventSheetPanel {
-  constructor(container, project, eventRuntime, scene) {
+  constructor(container, project, eventRuntime, scene, assets = null) {
     this.container = container;
     this.project = project;
     this.runtime = eventRuntime;
     this.scene = scene;
+    this.assets = assets;
     this.onChange = () => {};
     this.popover = new EventPopover();
     /** @type {import('./history.js').History|null} */
@@ -74,11 +75,6 @@ export class EventSheetPanel {
     this.refresh();
   }
 
-  /**
-   * Асинхронный (rAF) рендер. Множественные вызовы в одном кадре
-   * схлопываются в один _render() — критично, когда editor.onChange
-   * дёргается на каждый mousemove при drag.
-   */
   refresh() {
     if (this._refreshRaf != null) return;
     this._refreshRaf = requestAnimationFrame(() => {
@@ -87,7 +83,6 @@ export class EventSheetPanel {
     });
   }
 
-  /** Синхронный рендер. Использовать, когда DOM нужен «прямо сейчас». */
   refreshNow() {
     if (this._refreshRaf != null) {
       cancelAnimationFrame(this._refreshRaf);
@@ -103,6 +98,7 @@ export class EventSheetPanel {
   // ============================================================
 
   _nextUid(sheet) {
+    if (!sheet) return 1;
     let max = 0;
     walkEvents(sheet.events || [], (ev) => {
       for (const c of (ev.conditions || [])) if (c.uid > max) max = c.uid;
@@ -162,13 +158,21 @@ export class EventSheetPanel {
 
     if (def.type === 'prefab') {
       if (!val) return null;
-      const exists = this.scene.objects.some((o) => o.name === val);
+      const objs = this.scene.objects;
+      let exists = false;
+      for (let i = 0; i < objs.length; i++) {
+        if (!objs[i]._dead && objs[i].name === val) { exists = true; break; }
+      }
       return exists ? null : `Шаблон «${val}» не найден`;
     }
 
     if (def.type === 'target') {
       if (val === '*') return null;
-      const exists = this.scene.objects.some((o) => o.name === val);
+      const objs = this.scene.objects;
+      let exists = false;
+      for (let i = 0; i < objs.length; i++) {
+        if (!objs[i]._dead && objs[i].name === val) { exists = true; break; }
+      }
       return exists ? null : `Объект «${val}» не найден на сцене`;
     }
 
@@ -181,7 +185,10 @@ export class EventSheetPanel {
 
     if (def.type === 'instvar') {
       const target = (allParams && allParams.target) || '*';
-      for (const o of this.scene.objects) {
+      const objs = this.scene.objects;
+      for (let i = 0; i < objs.length; i++) {
+        const o = objs[i];
+        if (o._dead) continue;
         if (target === '*' || o.name === target) {
           if (o.properties && val in o.properties) return null;
         }
@@ -190,6 +197,12 @@ export class EventSheetPanel {
         ? 'ни у одного объекта'
         : `у объекта «${target}»`;
       return `Переменная «${val}» не найдена ${who}`;
+    }
+
+    if (def.type === 'sound') {
+      if (!this.assets) return null;
+      const exists = this.assets.hasAudio(val);
+      return exists ? null : `Звук «${val}» не найден в ресурсах`;
     }
 
     return null;
@@ -434,11 +447,11 @@ export class EventSheetPanel {
             item.params?.[p.id], item.params, warnMsg
           );
         }).join('')
-      : `<span class="es-param-error">неизвестный тип: ${item.type}</span>`;
+      : `<span class="es-param-error">неизвестный тип: ${this._escapeAttr(item.type)}</span>`;
 
     row.innerHTML = `
       <span class="es-drag-handle" title="Перетащить">${icon('grip-vertical')}</span>
-      <span class="es-row-label">${def ? def.label : item.type}</span>
+      <span class="es-row-label">${def ? this._escapeAttr(def.label) : this._escapeAttr(item.type)}</span>
       <span class="es-params">${paramsHtml}</span>
       <button class="es-row-del" data-action="${kind === 'cond' ? 'del-condition' : 'del-action'}" title="Удалить" draggable="false">
         ${icon('x')}
@@ -453,48 +466,104 @@ export class EventSheetPanel {
 
     const cls  = 'es-param' + (warnMsg ? ' invalid' : '');
     const attr = warnMsg ? ` data-tooltip="${this._escapeAttr(warnMsg)}"` : '';
+    const labelHtml = this._escapeAttr(def.label);
 
+    // ---------- number ----------
     if (def.type === 'number') {
-      return `<label class="${cls}"${attr}><span>${def.label}</span>
-        <input type="number" data-param="${key}" value="${val}"></label>`;
+      const minAttr  = def.min  !== undefined ? ` min="${def.min}"`   : '';
+      const maxAttr  = def.max  !== undefined ? ` max="${def.max}"`   : '';
+      const stepAttr = def.step !== undefined ? ` step="${def.step}"` : '';
+      return `<label class="${cls}"${attr}><span>${labelHtml}</span>
+        <input type="number" data-param="${key}" value="${this._escapeAttr(val)}"${minAttr}${maxAttr}${stepAttr}></label>`;
     }
+
+    // ---------- string ----------
     if (def.type === 'string') {
-      return `<label class="${cls}"${attr}><span>${def.label}</span>
-        <input type="text" data-param="${key}" value="${val}"></label>`;
+      return `<label class="${cls}"${attr}><span>${labelHtml}</span>
+        <input type="text" data-param="${key}" value="${this._escapeAttr(val)}"></label>`;
     }
+
+    // ---------- select ----------
     if (def.type === 'select') {
-      const opts = (def.options || []).map((o) =>
-        `<option value="${o}"${o === val ? ' selected' : ''}>${optionLabel(o, def.id)}</option>`
-      ).join('');
-      return `<label class="${cls}"${attr}><span>${def.label}</span>
-        <select data-param="${key}">${opts}</select></label>`;
+      const options = def.options || [];
+      const valStr = val === undefined || val === null ? '' : String(val);
+      const inList = options.some((o) => String(o) === valStr);
+      const opts = options.map((o) => {
+        const oStr = String(o);
+        const sel = oStr === valStr ? ' selected' : '';
+        return `<option value="${this._escapeAttr(oStr)}"${sel}>${this._escapeAttr(optionLabel(o, def.id))}</option>`;
+      }).join('');
+      const extra = inList || valStr === ''
+        ? ''
+        : `<option value="${this._escapeAttr(valStr)}" selected>${this._escapeAttr(valStr)}</option>`;
+      return `<label class="${cls}"${attr}><span>${labelHtml}</span>
+        <select data-param="${key}">${extra}${opts}</select></label>`;
     }
+
+    // ---------- key ----------
     if (def.type === 'key') {
+      const valStr = val === undefined || val === null ? '' : String(val);
+      const inList = KEY_OPTIONS.includes(valStr);
       const opts = KEY_OPTIONS.map((k) =>
-        `<option value="${k}"${k === val ? ' selected' : ''}>${k}</option>`).join('');
-      return `<label class="${cls}"${attr}><span>${def.label}</span>
-        <select data-param="${key}">${opts}</select></label>`;
+        `<option value="${k}"${k === valStr ? ' selected' : ''}>${k}</option>`).join('');
+      const extra = inList || valStr === ''
+        ? ''
+        : `<option value="${this._escapeAttr(valStr)}" selected>${this._escapeAttr(valStr)}</option>`;
+      return `<label class="${cls}"${attr}><span>${labelHtml}</span>
+        <select data-param="${key}">${extra}${opts}</select></label>`;
     }
+
+    // ---------- varname ----------
     if (def.type === 'varname') {
       const names = Object.keys(this.project.vars || {});
       const has = names.includes(val);
       const opts = names.map((n) =>
-        `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
+        `<option value="${this._escapeAttr(n)}"${n === val ? ' selected' : ''}>${this._escapeAttr(n)}</option>`).join('');
 
       if (!val) {
         const placeholder = `<option value="" selected>Выберите переменную</option>`;
-        return `<label class="${cls}"${attr}><span>${def.label}</span>
+        return `<label class="${cls}"${attr}><span>${labelHtml}</span>
           <select data-param="${key}">${placeholder}${opts}</select></label>`;
       }
 
       const extra = has ? '' :
-        `<option value="${val}" selected>${val} (нет)</option>`;
-      return `<label class="${cls}"${attr}><span>${def.label}</span>
+        `<option value="${this._escapeAttr(val)}" selected>${this._escapeAttr(val)} (нет)</option>`;
+      return `<label class="${cls}"${attr}><span>${labelHtml}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
+
+    // ---------- sound ----------
+    if (def.type === 'sound') {
+      const ids = this.assets ? this.assets.listAudioIds() : [];
+      const has = ids.includes(val);
+      const opts = ids.map((n) =>
+        `<option value="${this._escapeAttr(n)}"${n === val ? ' selected' : ''}>${this._escapeAttr(n)}</option>`).join('');
+
+      const placeholderText = ids.length === 0
+        ? 'Нет звуков'
+        : 'Выберите звук';
+
+      if (!val) {
+        const ph = `<option value="" selected>${placeholderText}</option>`;
+        return `<label class="${cls}"${attr}><span>${labelHtml}</span>
+          <select data-param="${key}">${ph}${opts}</select></label>`;
+      }
+
+      const extra = has ? '' :
+        `<option value="${this._escapeAttr(val)}" selected>${this._escapeAttr(val)} (нет в ресурсах)</option>`;
+      return `<label class="${cls}"${attr}><span>${labelHtml}</span>
+        <select data-param="${key}">${extra}${opts}</select></label>`;
+    }
+
+    // ---------- prefab ----------
     if (def.type === 'prefab') {
       const names = new Set();
-      for (const o of this.scene.objects) if (o.name) names.add(o.name);
+      const objs = this.scene.objects;
+      for (let i = 0; i < objs.length; i++) {
+        const o = objs[i];
+        if (o._dead) continue;
+        if (o.name) names.add(o.name);
+      }
       const list = [...names].sort();
 
       const placeholderText = list.length === 0
@@ -503,37 +572,53 @@ export class EventSheetPanel {
 
       if (!val) {
         const ph = `<option value="" selected>${placeholderText}</option>`;
-        const opts = list.map((n) => `<option value="${n}">${n}</option>`).join('');
-        return `<label class="${cls}"${attr}><span>${def.label}</span>
+        const opts = list.map((n) => `<option value="${this._escapeAttr(n)}">${this._escapeAttr(n)}</option>`).join('');
+        return `<label class="${cls}"${attr}><span>${labelHtml}</span>
           <select data-param="${key}">${ph}${opts}</select></label>`;
       }
 
       const has = list.includes(val);
       const extra = has ? '' :
-        `<option value="${val}" selected>${val} (нет в сцене)</option>`;
+        `<option value="${this._escapeAttr(val)}" selected>${this._escapeAttr(val)} (нет в сцене)</option>`;
       const opts = list.map((n) =>
-        `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
-      return `<label class="${cls}"${attr}><span>${def.label}</span>
+        `<option value="${this._escapeAttr(n)}"${n === val ? ' selected' : ''}>${this._escapeAttr(n)}</option>`).join('');
+      return `<label class="${cls}"${attr}><span>${labelHtml}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
+
+    // ---------- target ----------
     if (def.type === 'target') {
       const names = new Set(['*']);
-      for (const o of this.scene.objects) if (o.name) names.add(o.name);
+      const objs = this.scene.objects;
+      for (let i = 0; i < objs.length; i++) {
+        const o = objs[i];
+        if (o._dead) continue;
+        if (o.name) names.add(o.name);
+      }
 
       const inList = names.has(val);
-      const opts = [...names].map((n) =>
-        `<option value="${n}"${n === val ? ' selected' : ''}>${n === '*' ? '* (Все объекты, с динамическим типом тела)' : n}</option>`).join('');
+      const opts = [...names].map((n) => {
+        const safe = this._escapeAttr(n);
+        const display = n === '*'
+          ? '* (Все объекты, с динамическим типом тела)'
+          : safe;
+        return `<option value="${safe}"${n === val ? ' selected' : ''}>${display}</option>`;
+      }).join('');
       const extra = inList ? '' :
-        `<option value="${val}" selected>${val} (нет в сцене)</option>`;
+        `<option value="${this._escapeAttr(val)}" selected>${this._escapeAttr(val)} (нет в сцене)</option>`;
 
-      return `<label class="${cls}"${attr}><span>${def.label}</span>
+      return `<label class="${cls}"${attr}><span>${labelHtml}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
 
+    // ---------- instvar ----------
     if (def.type === 'instvar') {
       const target = (allParams && allParams.target) || '*';
       const names = new Set();
-      for (const o of this.scene.objects) {
+      const objs = this.scene.objects;
+      for (let i = 0; i < objs.length; i++) {
+        const o = objs[i];
+        if (o._dead) continue;
         if (target === '*' || o.name === target) {
           for (const n of Object.keys(o.properties || {})) names.add(n);
         }
@@ -547,17 +632,17 @@ export class EventSheetPanel {
       if (!val) {
         const placeholder = `<option value="" selected>${placeholderText}</option>`;
         const opts = list.map((n) =>
-          `<option value="${n}">${n}</option>`).join('');
-        return `<label class="${cls}"${attr}><span>${def.label}</span>
+          `<option value="${this._escapeAttr(n)}">${this._escapeAttr(n)}</option>`).join('');
+        return `<label class="${cls}"${attr}><span>${labelHtml}</span>
           <select data-param="${key}">${placeholder}${opts}</select></label>`;
       }
 
       const inList = list.includes(val);
       const opts = list.map((n) =>
-        `<option value="${n}"${n === val ? ' selected' : ''}>${n}</option>`).join('');
+        `<option value="${this._escapeAttr(n)}"${n === val ? ' selected' : ''}>${this._escapeAttr(n)}</option>`).join('');
       const extra = inList ? '' :
-        `<option value="${val}" selected>${val} (нет в сцене)</option>`;
-      return `<label class="${cls}"${attr}><span>${def.label}</span>
+        `<option value="${this._escapeAttr(val)}" selected>${this._escapeAttr(val)} (нет в сцене)</option>`;
+      return `<label class="${cls}"${attr}><span>${labelHtml}</span>
         <select data-param="${key}">${extra}${opts}</select></label>`;
     }
 
@@ -748,6 +833,7 @@ export class EventSheetPanel {
 
   _isDescendant(fromId, toId) {
     const sheet = this._getSheet();
+    if (!sheet) return false;
     const fromEl = findElement(sheet, fromId);
     if (!fromEl) return false;
     const stack = [fromEl];
@@ -777,6 +863,7 @@ export class EventSheetPanel {
       const params = computeDefaultParams(def, {
         scene: this.scene,
         vars:  this.project.vars || {},
+        assets: this.assets,
       });
 
       const sheet = this._getSheet();
@@ -967,6 +1054,7 @@ export class EventSheetPanel {
         const params = computeDefaultParams(def, {
           scene: this.scene,
           vars:  this.project.vars || {},
+          assets: this.assets,
         });
 
         const sheet = this._getSheet();
@@ -1119,6 +1207,7 @@ export class EventSheetPanel {
     const h = this.history;
     const apply = () => {
       const sheet = this._getSheet();
+      if (!sheet) return;
       const id = nextId(sheet);
       const ev = { id, conditions: [], actions: [], children: [], disabled: false };
 
@@ -1178,6 +1267,7 @@ export class EventSheetPanel {
     const h = this.history;
     const apply = () => {
       const sheet = this._getSheet();
+      if (!sheet) return;
       const original = this._findEvent(eventId);
       if (!original) return;
 
@@ -1217,6 +1307,7 @@ export class EventSheetPanel {
     const h = this.history;
     const apply = () => {
       const sheet = this._getSheet();
+      if (!sheet) return;
       const insertion = findParentArray(sheet, id);
       if (!insertion) return;
       insertion.arr.splice(insertion.idx, 1);
@@ -1252,6 +1343,7 @@ export class EventSheetPanel {
     const h = this.history;
     const apply = () => {
       const sheet = this._getSheet();
+      if (!sheet) return;
       const id = nextId(sheet);
       const group = {
         id, _type: 'group',
@@ -1310,6 +1402,7 @@ export class EventSheetPanel {
     const h = this.history;
     const apply = () => {
       const sheet = this._getSheet();
+      if (!sheet) return;
       const id = nextId(sheet);
       const c = {
         id, _type: 'comment',
@@ -1335,6 +1428,7 @@ export class EventSheetPanel {
     const h = this.history;
     const apply = () => {
       const sheet = this._getSheet();
+      if (!sheet) return;
       const insertion = findParentArray(sheet, id);
       if (!insertion) return;
       insertion.arr.splice(insertion.idx, 1);
@@ -1403,6 +1497,11 @@ export class EventSheetPanel {
     });
 
     if (touched > 0) {
+      // Обязательно: def.compile(params) захватывает значения параметров
+      // в замыкание. Без перекомпиляции runtime продолжит вызывать
+      // старые функции со старыми значениями — PlaySound(newName)
+      // не найдёт AudioBuffer, setVelocity(target) не найдёт объект и т.д.
+      this._recompile();
       this.refresh();
       this.onChange();
     }
@@ -1424,12 +1523,18 @@ export class EventSheetPanel {
     });
   }
 
+  /** Обновляет ссылки на звук в параметрах событий при переименовании. */
+  renameSoundRefs(oldName, newName) {
+    this._renameParamRefs(oldName, newName, 'sound');
+  }
+
   // ============================================================
   // HELPERS
   // ============================================================
 
   _findEvent(id, list) {
     const sheet = this._getSheet();
+    if (!sheet) return null;
     list = list || sheet.events;
     for (const el of list) {
       if (kindOf(el) !== EVENT) {

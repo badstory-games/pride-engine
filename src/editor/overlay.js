@@ -14,7 +14,7 @@ export function drawOverlay(batch, editor, camera) {
 
   if (editor.box) {
     const { x0, y0, x1, y1 } = normalizeRect(editor.box);
-    batch.draw(x0, y0, x1 - x0, y1 - y0, 0, 0, 1, 1, 0.3, 0.6, 1, 0.15);
+    batch.drawColor(x0, y0, x1 - x0, y1 - y0, 0.3, 0.6, 1, 0.15);
     const t = 1 / camera.zoom;
     drawLine(batch, x0, y0, x1, y0, t, 0.5, 0.8, 1, 1);
     drawLine(batch, x1, y0, x1, y1, t, 0.5, 0.8, 1, 1);
@@ -24,7 +24,7 @@ export function drawOverlay(batch, editor, camera) {
 
   if (editor.pendingRect) {
     const { x0, y0, x1, y1 } = normalizeRect(editor.pendingRect);
-    batch.draw(x0, y0, x1 - x0, y1 - y0, 0, 0, 1, 1, 1, 0.7, 0.2, 0.25);
+    batch.drawColor(x0, y0, x1 - x0, y1 - y0, 1, 0.7, 0.2, 0.25);
     const t = 1 / camera.zoom;
     drawLine(batch, x0, y0, x1, y0, t, 1, 0.85, 0.35, 1);
     drawLine(batch, x1, y0, x1, y1, t, 1, 0.85, 0.35, 1);

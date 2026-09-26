@@ -32,15 +32,18 @@ export class PhysicsBridge {
     this.running = false;
     this.paused = false;
 
-    /**
-     * Полный снимок сцены (scene.toJSON()) на момент старта.
-     * При Stop восстанавливаем всё — включая объекты, удалённые или
-     * созданные в процессе Play.
-     */
     this.snapshot = null;
 
-    /** @type {{bodyIndex:number, objectId:number, obj:object}[]} */
+    /** @type {{bodyIndex:number, objectId:number, obj:object, _dead:boolean}[]} */
     this.mapping = [];
+
+    // Пул mapping-записей.
+    this._mappingPool = [];
+    this._mappingPoolMax = 512;
+
+    // Отложенная чистка mapping — аналогично scene.flush(),
+    // но только для записей, чьи объекты удалены.
+    this._hasDeadMappings = false;
   }
 
   get bodiesCount() {
@@ -62,9 +65,12 @@ export class PhysicsBridge {
 
     this.world.clear();
     this.mapping.length = 0;
+    this._mappingPool.length = 0;
+    this._hasDeadMappings = false;
 
     for (const obj of this.scene.objects) {
-      if (obj.template) continue;   // шаблоны не участвуют в физике
+      if (obj._dead) continue;
+      if (obj.template) continue;
       this._addBody(obj);
     }
 
@@ -72,10 +78,22 @@ export class PhysicsBridge {
     this.paused = false;
   }
 
-  /**
-   * Добавляет физическое тело для объекта. Используется и в start(),
-   * и при динамическом спавне во время Play.
-   */
+  _acquireMapping() {
+    return this._mappingPool.length > 0
+      ? this._mappingPool.pop()
+      : { bodyIndex: 0, objectId: 0, obj: null, _dead: false };
+  }
+
+  _releaseMapping(m) {
+    m.bodyIndex = 0;
+    m.objectId  = 0;
+    m.obj       = null;
+    m._dead     = false;
+    if (this._mappingPool.length < this._mappingPoolMax) {
+      this._mappingPool.push(m);
+    }
+  }
+
   _addBody(obj) {
     const ph = obj.physics;
     if (!ph || !ph.enabled) return null;
@@ -105,30 +123,55 @@ export class PhysicsBridge {
       userId: obj.id,
     });
 
-    this.mapping.push({ bodyIndex: idx, objectId: obj.id, obj });
+    const m = this._acquireMapping();
+    m.bodyIndex = idx;
+    m.objectId  = obj.id;
+    m.obj       = obj;
+    m._dead     = false;
+    this.mapping.push(m);
     return idx;
   }
 
-  /** Публичный метод для action'а SpawnObject. */
   spawnBodyFor(obj) {
     if (!this.running) return null;
-    if (obj.template) return null;
+    if (!obj || obj._dead || obj.template) return null;
     return this._addBody(obj);
   }
 
-  /**
-   * Помечает тело мёртвым (flags = 0) и убирает связку из mapping.
-   * Реальная чистка буфера не нужна: world.step пропускает тела с flags=0.
-   */
   destroyBodyFor(objId) {
     if (!this.running) return;
-    const i = this.mapping.findIndex((m) => m.objectId === objId);
-    if (i < 0) return;
-    const { bodyIndex } = this.mapping[i];
-    if (bodyIndex >= 0 && bodyIndex < this.world.bodies.count) {
-      this.world.bodies.flags[bodyIndex] = 0;
+    const map = this.mapping;
+    for (let i = 0; i < map.length; i++) {
+      const m = map[i];
+      if (m.objectId === objId && !m._dead) {
+        m._dead = true;
+        const bi = m.bodyIndex;
+        if (bi >= 0 && bi < this.world.bodies.count) {
+          this.world.bodies.flags[bi] = 0;
+        }
+        this._hasDeadMappings = true;
+        return;
+      }
     }
-    this.mapping.splice(i, 1);
+  }
+
+  /**
+   * Один проход: живые mapping-записи сдвигаются влево, мёртвые —
+   * в пул. Вызывается из update ДО scene.flush(), чтобы ни одна
+   * mapping-запись не держала ссылку на объект, который вот-вот
+   * вернётся в пул Scene.
+   */
+  flushMappings() {
+    if (!this._hasDeadMappings) return;
+    const map = this.mapping;
+    let w = 0;
+    for (let i = 0; i < map.length; i++) {
+      const m = map[i];
+      if (m._dead) this._releaseMapping(m);
+      else         map[w++] = m;
+    }
+    map.length = w;
+    this._hasDeadMappings = false;
   }
 
   pause() {
@@ -143,12 +186,13 @@ export class PhysicsBridge {
     if (!this.running) return;
 
     if (this.snapshot) {
-      // Полное восстановление сцены из снимка.
       this.scene.fromJSON(this.snapshot);
     }
 
     this.world.clear();
     this.mapping.length = 0;
+    this._mappingPool.length = 0;
+    this._hasDeadMappings = false;
     this.snapshot = null;
     this.running = false;
     this.paused = false;
@@ -162,7 +206,7 @@ export class PhysicsBridge {
     for (let i = 0; i < m.length; i++) {
       const bodyIndex = m[i].bodyIndex;
       const obj = m[i].obj;
-      // Не двигаем мёртвые тела (не должно случаться, но перестраховка).
+      if (!obj || obj._dead) continue;
       if (store.flags[bodyIndex] === 0) continue;
       obj.x = store.x[bodyIndex] - obj.width  / 2;
       obj.y = store.y[bodyIndex] - obj.height / 2;
